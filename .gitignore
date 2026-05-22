@@ -224,3 +224,8 @@ data/*.db-journal
 !data/.gitkeep
 .DS_Store
 Thumbs.db
+
+__pycache__/
+*.pyc
+.vscode/
+data/*.db
