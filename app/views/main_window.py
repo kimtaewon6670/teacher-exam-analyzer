@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.views.dashboard_view import DashboardView
+from app.views.student_manage_view import StudentManageView
 
 
 class MainWindow(QMainWindow):
@@ -43,6 +44,11 @@ class MainWindow(QMainWindow):
             "리포트",
         ]:
             self.pages.addWidget(PlaceholderPage(name))
+
+        student_placeholder = self.pages.widget(1)
+        self.pages.removeWidget(student_placeholder)
+        student_placeholder.deleteLater()
+        self.pages.insertWidget(1, StudentManageView())
 
         layout.addWidget(self.sidebar)
         layout.addWidget(self.pages, 1)
