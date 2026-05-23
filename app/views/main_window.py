@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.views.dashboard_view import DashboardView
+from app.views.question_bank_view import QuestionBankView
 from app.views.student_manage_view import StudentManageView
 
 
@@ -49,6 +50,11 @@ class MainWindow(QMainWindow):
         self.pages.removeWidget(student_placeholder)
         student_placeholder.deleteLater()
         self.pages.insertWidget(1, StudentManageView())
+
+        question_placeholder = self.pages.widget(2)
+        self.pages.removeWidget(question_placeholder)
+        question_placeholder.deleteLater()
+        self.pages.insertWidget(2, QuestionBankView())
 
         layout.addWidget(self.sidebar)
         layout.addWidget(self.pages, 1)
