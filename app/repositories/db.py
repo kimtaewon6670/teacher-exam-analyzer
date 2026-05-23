@@ -117,10 +117,10 @@ def init_database():
         ''')
         
         conn.commit()
-        print(f"✓ Database initialized successfully at {DB_PATH}")
+        print(f"Database initialized successfully at {DB_PATH}")
         
     except sqlite3.Error as e:
-        print(f"✗ Database error: {e}")
+        print(f"Database error: {e}")
         conn.rollback()
         raise
     finally:

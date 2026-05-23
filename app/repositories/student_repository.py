@@ -34,16 +34,16 @@ class StudentRepository:
             
             conn.commit()
             student_id = cursor.lastrowid
-            print(f"✓ Student created successfully (ID: {student_id})")
+            print(f"Student created successfully (ID: {student_id})")
             return student_id
             
         except sqlite3.IntegrityError as e:
             conn.rollback()
-            print(f"✗ Integrity error: {e}")
+            print(f"Integrity error: {e}")
             raise
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -71,7 +71,7 @@ class StudentRepository:
             return None
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -99,7 +99,7 @@ class StudentRepository:
             return None
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -129,7 +129,7 @@ class StudentRepository:
             return students
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -166,7 +166,7 @@ class StudentRepository:
             return students
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -183,7 +183,7 @@ class StudentRepository:
             bool: 성공 여부
         """
         if not student.student_id:
-            print("✗ student_id is required for update")
+            print("student_id is required for update")
             return False
         
         conn = get_db_connection()
@@ -200,15 +200,15 @@ class StudentRepository:
             rows_affected = cursor.rowcount
             
             if rows_affected > 0:
-                print(f"✓ Student updated successfully (ID: {student.student_id})")
+                print(f"Student updated successfully (ID: {student.student_id})")
                 return True
             else:
-                print(f"✗ No student found with ID: {student.student_id}")
+                print(f"No student found with ID: {student.student_id}")
                 return False
                 
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -237,15 +237,15 @@ class StudentRepository:
             rows_affected = cursor.rowcount
             
             if rows_affected > 0:
-                print(f"✓ Student deactivated successfully (ID: {student_id})")
+                print(f"Student deactivated successfully (ID: {student_id})")
                 return True
             else:
-                print(f"✗ No student found with ID: {student_id}")
+                print(f"No student found with ID: {student_id}")
                 return False
                 
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -274,15 +274,15 @@ class StudentRepository:
             rows_affected = cursor.rowcount
             
             if rows_affected > 0:
-                print(f"✓ Student activated successfully (ID: {student_id})")
+                print(f"Student activated successfully (ID: {student_id})")
                 return True
             else:
-                print(f"✗ No student found with ID: {student_id}")
+                print(f"No student found with ID: {student_id}")
                 return False
                 
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -310,19 +310,19 @@ class StudentRepository:
             rows_affected = cursor.rowcount
             
             if rows_affected > 0:
-                print(f"✓ Student deleted successfully (ID: {student_id})")
+                print(f"Student deleted successfully (ID: {student_id})")
                 return True
             else:
-                print(f"✗ No student found with ID: {student_id}")
+                print(f"No student found with ID: {student_id}")
                 return False
                 
         except sqlite3.IntegrityError:
             conn.rollback()
-            print(f"✗ Cannot delete student with ID {student_id}: Has related exam records")
+            print(f"Cannot delete student with ID {student_id}: Has related exam records")
             return False
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
