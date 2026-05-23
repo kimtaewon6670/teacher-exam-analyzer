@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -34,10 +36,14 @@ class QuestionBankView(QWidget):
         layout.addWidget(self._build_register_card())
         layout.addWidget(self._build_filter_card())
         layout.addWidget(self._build_table_card(), 1)
+        self.questions_data: list[dict[str, str]] = []
+        self.question_list_window: QuestionListDialog | None = None
 
         self.set_questions_data(
             [
                 {
+                    "exam": "2024년 1학기 중간고사",
+                    "class_name": "1학년 1반",
                     "content": "빈칸에 들어갈 알맞은 단어를 고르시오.",
                     "type": "어휘",
                     "sub_category": "동의어",
@@ -47,15 +53,19 @@ class QuestionBankView(QWidget):
                     "status": "활성",
                 },
                 {
+                    "exam": "2024년 1학기 기말고사",
+                    "class_name": "1학년 1반",
                     "content": "다음 문장에서 어법상 틀린 부분을 고르시오.",
                     "type": "문법",
                     "sub_category": "시제",
                     "difficulty": "보통",
-                    "answer": "has went",
+                    "answer": "has gone",
                     "tags": "grammar, tense",
                     "status": "활성",
                 },
                 {
+                    "exam": "2024년 2학기 중간고사",
+                    "class_name": "1학년 2반",
                     "content": "글의 주제로 가장 적절한 것을 고르시오.",
                     "type": "독해",
                     "sub_category": "주제 찾기",
@@ -65,6 +75,8 @@ class QuestionBankView(QWidget):
                     "status": "활성",
                 },
                 {
+                    "exam": "2025년 1학기 중간고사",
+                    "class_name": "1학년 3반",
                     "content": "밑줄 친 표현의 의미로 가장 적절한 것을 고르시오.",
                     "type": "어휘",
                     "sub_category": "문맥 의미",
@@ -169,10 +181,15 @@ class QuestionBankView(QWidget):
         )
 
     def set_questions_data(self, questions: list[dict[str, str]]) -> None:
-        self.questions_table.setRowCount(len(questions))
+        self.questions_data = questions
+        self._fill_questions_table(self.questions_table, questions)
 
+    def _fill_questions_table(self, table: QTableWidget, questions: list[dict[str, str]]) -> None:
+        table.setRowCount(len(questions))
         for row_index, question in enumerate(questions):
             values = [
+                question.get("exam", ""),
+                question.get("class_name", ""),
                 question.get("content", ""),
                 question.get("type", ""),
                 question.get("sub_category", ""),
@@ -184,16 +201,21 @@ class QuestionBankView(QWidget):
 
             for column_index, value in enumerate(values):
                 item = QTableWidgetItem(value)
-                alignment = Qt.AlignLeft | Qt.AlignVCenter if column_index == 0 else Qt.AlignCenter
+                alignment = Qt.AlignLeft | Qt.AlignVCenter if column_index == 2 else Qt.AlignCenter
                 item.setTextAlignment(alignment)
-                self.questions_table.setItem(row_index, column_index, item)
+                table.setItem(row_index, column_index, item)
 
-            self.questions_table.setCellWidget(row_index, 7, self._make_table_button_cell("수정", "editButton"))
-            self.questions_table.setCellWidget(row_index, 8, self._make_table_button_cell("비활성화", "disableButton"))
-            self.questions_table.setRowHeight(row_index, 40)
+            table.setCellWidget(row_index, 9, self._make_table_button_cell("수정", "editButton"))
+            table.setCellWidget(row_index, 10, self._make_table_button_cell("비활성화", "disableButton"))
+            table.setRowHeight(row_index, 40)
 
     def get_question_form_data(self) -> dict[str, str]:
         return {
+            "exam_year": self.exam_year_input.text().strip(),
+            "semester": self.semester_combo.currentText(),
+            "exam_type": self.exam_type_combo.currentText(),
+            "exam_name": self._get_selected_exam_name(),
+            "class_name": self.class_combo.currentText(),
             "content": self.content_input.toPlainText().strip(),
             "type": self.type_combo.currentText(),
             "sub_category": self.sub_category_input.text().strip(),
@@ -207,11 +229,18 @@ class QuestionBankView(QWidget):
     def get_filter_data(self) -> dict[str, str]:
         return {
             "keyword": self.keyword_input.text().strip(),
+            "exam": self.exam_filter.currentText(),
+            "class_name": self.class_filter.currentText(),
             "type": self.type_filter.currentText(),
             "sub_category": self.sub_category_filter.text().strip(),
             "difficulty": self.difficulty_filter.currentText(),
             "tag": self.tag_filter.text().strip(),
         }
+
+    def _get_selected_exam_name(self) -> str:
+        year = self.exam_year_input.text().strip()
+        year_label = year if year.endswith("년") else f"{year}년"
+        return f"{year_label} {self.semester_combo.currentText()} {self.exam_type_combo.currentText()}"
 
     def _on_register_clicked(self) -> None:
         pass
@@ -221,10 +250,16 @@ class QuestionBankView(QWidget):
 
     def _on_reset_filter_clicked(self) -> None:
         self.keyword_input.clear()
+        self.exam_filter.setCurrentIndex(0)
+        self.class_filter.setCurrentIndex(0)
         self.type_filter.setCurrentIndex(0)
         self.sub_category_filter.clear()
         self.difficulty_filter.setCurrentIndex(0)
         self.tag_filter.clear()
+
+    def _on_open_question_list_clicked(self) -> None:
+        self.question_list_window = QuestionListDialog(self.questions_data, self)
+        self.question_list_window.showMaximized()
 
     def _build_register_card(self) -> QFrame:
         card = QFrame()
@@ -242,6 +277,16 @@ class QuestionBankView(QWidget):
         form.setHorizontalSpacing(12)
         form.setVerticalSpacing(10)
 
+        self.exam_year_input = QLineEdit()
+        self.exam_year_input.setValidator(QIntValidator(2000, 2099, self))
+        self.exam_year_input.setPlaceholderText("예: 2024")
+        self.exam_year_input.setText("2024")
+        self.semester_combo = QComboBox()
+        self.semester_combo.addItems(["1학기", "2학기"])
+        self.exam_type_combo = QComboBox()
+        self.exam_type_combo.addItems(["중간고사", "기말고사"])
+        self.class_combo = QComboBox()
+        self.class_combo.addItems(["1학년 1반", "1학년 2반", "1학년 3반"])
         self.content_input = QTextEdit()
         self.content_input.setPlaceholderText("문제 내용 입력")
         self.type_combo = QComboBox()
@@ -259,14 +304,18 @@ class QuestionBankView(QWidget):
         self.tags_input = QLineEdit()
         self.tags_input.setPlaceholderText("태그 입력")
 
-        form.addWidget(self._make_labeled_widget("문제 내용", self.content_input), 0, 0, 2, 2)
-        form.addWidget(self._make_labeled_widget("문제 유형", self.type_combo), 0, 2)
-        form.addWidget(self._make_labeled_widget("세부 분류", self.sub_category_input), 0, 3)
-        form.addWidget(self._make_labeled_widget("난이도", self.difficulty_combo), 1, 2)
-        form.addWidget(self._make_labeled_widget("기준 정답", self.answer_input), 1, 3)
-        form.addWidget(self._make_labeled_widget("허용 답안", self.allowed_answers_input), 2, 0)
-        form.addWidget(self._make_labeled_widget("해설", self.explanation_input), 2, 1, 1, 2)
-        form.addWidget(self._make_labeled_widget("태그", self.tags_input), 2, 3)
+        form.addWidget(self._make_labeled_widget("연도", self.exam_year_input), 0, 0)
+        form.addWidget(self._make_labeled_widget("학기", self.semester_combo), 0, 1)
+        form.addWidget(self._make_labeled_widget("시험 구분", self.exam_type_combo), 0, 2)
+        form.addWidget(self._make_labeled_widget("반", self.class_combo), 0, 3)
+        form.addWidget(self._make_labeled_widget("문제 내용", self.content_input), 1, 0, 2, 2)
+        form.addWidget(self._make_labeled_widget("문제 유형", self.type_combo), 1, 2)
+        form.addWidget(self._make_labeled_widget("세부 분류", self.sub_category_input), 1, 3)
+        form.addWidget(self._make_labeled_widget("난이도", self.difficulty_combo), 2, 2)
+        form.addWidget(self._make_labeled_widget("기준 정답", self.answer_input), 2, 3)
+        form.addWidget(self._make_labeled_widget("허용 답안", self.allowed_answers_input), 3, 0)
+        form.addWidget(self._make_labeled_widget("해설", self.explanation_input), 3, 1, 1, 2)
+        form.addWidget(self._make_labeled_widget("태그", self.tags_input), 3, 3)
         layout.addLayout(form)
 
         button_row = QHBoxLayout()
@@ -297,6 +346,10 @@ class QuestionBankView(QWidget):
 
         self.keyword_input = QLineEdit()
         self.keyword_input.setPlaceholderText("검색어 입력")
+        self.exam_filter = QComboBox()
+        self.exam_filter.addItems(["전체 시험", "2024년 1학기 중간고사", "2024년 1학기 기말고사", "2024년 2학기 중간고사"])
+        self.class_filter = QComboBox()
+        self.class_filter.addItems(["전체 반", "1학년 1반", "1학년 2반", "1학년 3반"])
         self.type_filter = QComboBox()
         self.type_filter.addItems(["전체 유형", "어휘", "문법", "독해"])
         self.sub_category_filter = QLineEdit()
@@ -309,10 +362,12 @@ class QuestionBankView(QWidget):
         search_button = QPushButton("검색")
         search_button.setObjectName("primaryButton")
         search_button.clicked.connect(self._on_search_clicked)
-        reset_button = QPushButton("필터 초기화")
+        reset_button = QPushButton("초기화")
         reset_button.clicked.connect(self._on_reset_filter_clicked)
 
         filters.addWidget(self.keyword_input, 2)
+        filters.addWidget(self.exam_filter, 2)
+        filters.addWidget(self.class_filter, 1)
         filters.addWidget(self.type_filter, 1)
         filters.addWidget(self.sub_category_filter, 1)
         filters.addWidget(self.difficulty_filter, 1)
@@ -331,18 +386,25 @@ class QuestionBankView(QWidget):
         layout.setContentsMargins(18, 16, 18, 18)
         layout.setSpacing(12)
 
+        header = QHBoxLayout()
         title = QLabel("문제 목록")
         title.setObjectName("cardTitle")
-        layout.addWidget(title)
+        list_button = QPushButton("전체 보기")
+        list_button.setFixedWidth(100)
+        list_button.clicked.connect(self._on_open_question_list_clicked)
+        header.addWidget(title)
+        header.addStretch()
+        header.addWidget(list_button)
+        layout.addLayout(header)
 
-        self.questions_table = QTableWidget(0, 9)
+        self.questions_table = QTableWidget(0, 11)
         self.questions_table.setHorizontalHeaderLabels(
-            ["문제 내용", "유형", "세부 분류", "난이도", "기준 정답", "태그", "상태", "수정", "비활성화"]
+            ["시험", "반", "문제 내용", "유형", "세부 분류", "난이도", "기준 정답", "태그", "상태", "수정", "비활성화"]
         )
         self.questions_table.verticalHeader().setVisible(False)
         self.questions_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.questions_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
-        self.questions_table.setColumnWidth(0, 330)
+        self.questions_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Interactive)
+        self.questions_table.setColumnWidth(2, 330)
         self.questions_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.questions_table.setSelectionMode(QTableWidget.NoSelection)
         self.questions_table.setAlternatingRowColors(False)
@@ -378,3 +440,79 @@ class QuestionBankView(QWidget):
         button.setObjectName(object_name)
         button.setFixedSize(78, 26)
         return button
+
+
+class QuestionListDialog(QDialog):
+    def __init__(self, questions: list[dict[str, str]], parent: QuestionBankView | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("문제 목록")
+        self.resize(1400, 820)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 22, 24, 24)
+        layout.setSpacing(14)
+
+        title = QLabel("문제 목록")
+        title.setObjectName("dialogTitle")
+        layout.addWidget(title)
+
+        self.table = QTableWidget(0, 11)
+        self.table.setHorizontalHeaderLabels(
+            ["시험", "반", "문제 내용", "유형", "세부 분류", "난이도", "기준 정답", "태그", "상태", "수정", "비활성화"]
+        )
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Interactive)
+        self.table.setColumnWidth(2, 520)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionMode(QTableWidget.NoSelection)
+        layout.addWidget(self.table, 1)
+
+        if parent is not None:
+            parent._fill_questions_table(self.table, questions)
+
+        self.setStyleSheet(
+            """
+            QDialog {
+                background: #f4f7fb;
+                color: #172033;
+                font-family: "Malgun Gothic", "Segoe UI", Arial;
+            }
+            #dialogTitle {
+                color: #18263a;
+                font-size: 24px;
+                font-weight: 800;
+            }
+            QPushButton {
+                background: white;
+                border: 1px solid #d8e0ea;
+                border-radius: 6px;
+                color: #27384c;
+                font-weight: 700;
+                min-height: 24px;
+                padding: 0;
+            }
+            QPushButton#editButton {
+                color: #1f6fc2;
+            }
+            QPushButton#disableButton {
+                color: #b54708;
+            }
+            QTableWidget {
+                background: white;
+                border: 1px solid #dfe6ef;
+                border-radius: 6px;
+                color: #233348;
+                gridline-color: #e6ecf3;
+            }
+            QHeaderView::section {
+                background: #f7f9fc;
+                border: 0;
+                border-right: 1px solid #e2e8f0;
+                border-bottom: 1px solid #e2e8f0;
+                color: #2a3a50;
+                font-weight: 800;
+                padding: 9px;
+            }
+            """
+        )
