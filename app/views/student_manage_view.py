@@ -171,7 +171,12 @@ class StudentManageView(QWidget):
             self.students_table.setRowHeight(row_index, 38)
 
     def _refresh_students(self) -> None:
-        self.set_students_data(self.student_controller.get_students())
+        keyword = self.search_input.text().strip()
+        class_name = self.class_filter.currentText()
+        if class_name == "전체 반":
+            class_name = ""
+
+        self.set_students_data(self.student_controller.search_students(keyword, class_name))
 
     def _on_register_clicked(self) -> None:
         name = self.name_input.text().strip()
@@ -322,10 +327,12 @@ class StudentManageView(QWidget):
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("이름 또는 학번 검색")
+        self.search_input.textChanged.connect(self._refresh_students)
         layout.addWidget(self.search_input, 1)
 
         self.class_filter = QComboBox()
         self.class_filter.addItems(["전체 반", "1학년 1반", "1학년 2반", "1학년 3반"])
+        self.class_filter.currentTextChanged.connect(self._refresh_students)
         self.class_filter.setFixedWidth(160)
         layout.addWidget(self.class_filter)
 
