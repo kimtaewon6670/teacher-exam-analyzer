@@ -29,10 +29,12 @@ class QuestionRepository:
         try:
             cursor.execute('''
                 INSERT INTO questions 
-                (question_text, category, sub_category, difficulty, answer_text, 
+                (exam_name, class_name, question_text, category, sub_category, difficulty, answer_text, 
                  acceptable_answers, explanation, tags, is_active)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
+                question.exam_name,
+                question.class_name,
                 question.question_text,
                 question.category,
                 question.sub_category,
@@ -46,12 +48,12 @@ class QuestionRepository:
             
             conn.commit()
             question_id = cursor.lastrowid
-            print(f"✓ Question created successfully (ID: {question_id})")
+            print(f"Question created successfully (ID: {question_id})")
             return question_id
             
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -79,7 +81,7 @@ class QuestionRepository:
             return None
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -109,7 +111,7 @@ class QuestionRepository:
             return questions
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -146,7 +148,7 @@ class QuestionRepository:
             return questions
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -183,7 +185,7 @@ class QuestionRepository:
             return questions
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -220,7 +222,7 @@ class QuestionRepository:
             return questions
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -260,7 +262,7 @@ class QuestionRepository:
             return questions
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -300,7 +302,7 @@ class QuestionRepository:
             return questions
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -317,7 +319,7 @@ class QuestionRepository:
             bool: 성공 여부
         """
         if not question.question_id:
-            print("✗ question_id is required for update")
+            print("question_id is required for update")
             return False
         
         conn = get_db_connection()
@@ -326,10 +328,12 @@ class QuestionRepository:
         try:
             cursor.execute('''
                 UPDATE questions 
-                SET question_text = ?, category = ?, sub_category = ?, difficulty = ?,
+                SET exam_name = ?, class_name = ?, question_text = ?, category = ?, sub_category = ?, difficulty = ?,
                     answer_text = ?, acceptable_answers = ?, explanation = ?, tags = ?, is_active = ?
                 WHERE question_id = ?
             ''', (
+                question.exam_name,
+                question.class_name,
                 question.question_text,
                 question.category,
                 question.sub_category,
@@ -346,15 +350,15 @@ class QuestionRepository:
             rows_affected = cursor.rowcount
             
             if rows_affected > 0:
-                print(f"✓ Question updated successfully (ID: {question.question_id})")
+                print(f"Question updated successfully (ID: {question.question_id})")
                 return True
             else:
-                print(f"✗ No question found with ID: {question.question_id}")
+                print(f"No question found with ID: {question.question_id}")
                 return False
                 
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -383,15 +387,15 @@ class QuestionRepository:
             rows_affected = cursor.rowcount
             
             if rows_affected > 0:
-                print(f"✓ Question deactivated successfully (ID: {question_id})")
+                print(f"Question deactivated successfully (ID: {question_id})")
                 return True
             else:
-                print(f"✗ No question found with ID: {question_id}")
+                print(f"No question found with ID: {question_id}")
                 return False
                 
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -420,15 +424,15 @@ class QuestionRepository:
             rows_affected = cursor.rowcount
             
             if rows_affected > 0:
-                print(f"✓ Question activated successfully (ID: {question_id})")
+                print(f"Question activated successfully (ID: {question_id})")
                 return True
             else:
-                print(f"✗ No question found with ID: {question_id}")
+                print(f"No question found with ID: {question_id}")
                 return False
                 
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -456,19 +460,19 @@ class QuestionRepository:
             rows_affected = cursor.rowcount
             
             if rows_affected > 0:
-                print(f"✓ Question deleted successfully (ID: {question_id})")
+                print(f"Question deleted successfully (ID: {question_id})")
                 return True
             else:
-                print(f"✗ No question found with ID: {question_id}")
+                print(f"No question found with ID: {question_id}")
                 return False
                 
         except sqlite3.IntegrityError:
             conn.rollback()
-            print(f"✗ Cannot delete question with ID {question_id}: Used in exams")
+            print(f"Cannot delete question with ID {question_id}: Used in exams")
             return False
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -497,7 +501,7 @@ class QuestionRepository:
             return count
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -533,7 +537,7 @@ class QuestionRepository:
             return count
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)

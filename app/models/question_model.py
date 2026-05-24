@@ -9,6 +9,8 @@ class Question:
     
     Attributes:
         question_id: 문제 고유 ID
+        exam_name: 시험명
+        class_name: 반 정보
         question_text: 문제 내용
         category: 문제 유형 (어휘, 문법, 독해)
         sub_category: 세부 분류
@@ -25,6 +27,8 @@ class Question:
     difficulty: str
     answer_text: str
     question_id: Optional[int] = None
+    exam_name: Optional[str] = None
+    class_name: Optional[str] = None
     sub_category: Optional[str] = None
     acceptable_answers: Optional[str] = None
     explanation: Optional[str] = None
@@ -41,6 +45,8 @@ class Question:
         """
         return {
             'question_id': self.question_id,
+            'exam_name': self.exam_name,
+            'class_name': self.class_name,
             'question_text': self.question_text,
             'category': self.category,
             'sub_category': self.sub_category,
@@ -70,6 +76,8 @@ class Question:
             difficulty=data.get('difficulty'),
             answer_text=data.get('answer_text'),
             question_id=data.get('question_id'),
+            exam_name=data.get('exam_name'),
+            class_name=data.get('class_name'),
             sub_category=data.get('sub_category'),
             acceptable_answers=data.get('acceptable_answers'),
             explanation=data.get('explanation'),
