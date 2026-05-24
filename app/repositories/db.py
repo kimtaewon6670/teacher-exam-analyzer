@@ -46,6 +46,8 @@ def init_database():
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS questions (
                 question_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                exam_name TEXT,
+                class_name TEXT,
                 question_text TEXT NOT NULL,
                 category TEXT NOT NULL,
                 sub_category TEXT,
@@ -58,6 +60,8 @@ def init_database():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        _ensure_column(cursor, "questions", "exam_name", "TEXT")
+        _ensure_column(cursor, "questions", "class_name", "TEXT")
         
         # exams 테이블
         cursor.execute('''
@@ -136,3 +140,10 @@ def close_db_connection(conn):
     """
     if conn:
         conn.close()
+
+
+def _ensure_column(cursor, table_name: str, column_name: str, column_type: str) -> None:
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = {row["name"] for row in cursor.fetchall()}
+    if column_name not in columns:
+        cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
