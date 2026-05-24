@@ -23,6 +23,8 @@ from PySide6.QtWidgets import (
 class QuestionBankView(QWidget):
     def __init__(self) -> None:
         super().__init__()
+        self.on_edit_question = None
+        self.on_status_change_question = None
         self.setObjectName("questionBankView")
 
         layout = QVBoxLayout(self)
@@ -38,55 +40,6 @@ class QuestionBankView(QWidget):
         layout.addWidget(self._build_table_card(), 1)
         self.questions_data: list[dict[str, str]] = []
         self.question_list_window: QuestionListDialog | None = None
-
-        self.set_questions_data(
-            [
-                {
-                    "exam": "2024년 1학기 중간고사",
-                    "class_name": "1학년 1반",
-                    "content": "빈칸에 들어갈 알맞은 단어를 고르시오.",
-                    "type": "어휘",
-                    "sub_category": "동의어",
-                    "difficulty": "쉬움",
-                    "answer": "important",
-                    "tags": "vocabulary, basic",
-                    "status": "활성",
-                },
-                {
-                    "exam": "2024년 1학기 기말고사",
-                    "class_name": "1학년 1반",
-                    "content": "다음 문장에서 어법상 틀린 부분을 고르시오.",
-                    "type": "문법",
-                    "sub_category": "시제",
-                    "difficulty": "보통",
-                    "answer": "has gone",
-                    "tags": "grammar, tense",
-                    "status": "활성",
-                },
-                {
-                    "exam": "2024년 2학기 중간고사",
-                    "class_name": "1학년 2반",
-                    "content": "글의 주제로 가장 적절한 것을 고르시오.",
-                    "type": "독해",
-                    "sub_category": "주제 찾기",
-                    "difficulty": "보통",
-                    "answer": "environmental protection",
-                    "tags": "reading, topic",
-                    "status": "활성",
-                },
-                {
-                    "exam": "2025년 1학기 중간고사",
-                    "class_name": "1학년 3반",
-                    "content": "밑줄 친 표현의 의미로 가장 적절한 것을 고르시오.",
-                    "type": "어휘",
-                    "sub_category": "문맥 의미",
-                    "difficulty": "어려움",
-                    "answer": "give up",
-                    "tags": "idiom, context",
-                    "status": "비활성",
-                },
-            ]
-        )
 
         self.setStyleSheet(
             """
@@ -182,7 +135,8 @@ class QuestionBankView(QWidget):
 
     def set_questions_data(self, questions: list[dict[str, str]]) -> None:
         self.questions_data = questions
-        self._fill_questions_table(self.questions_table, questions)
+        if self.question_list_window is not None and self.question_list_window.isVisible():
+            self.question_list_window.set_questions_data(questions)
 
     def _fill_questions_table(self, table: QTableWidget, questions: list[dict[str, str]]) -> None:
         table.setRowCount(len(questions))
@@ -205,9 +159,38 @@ class QuestionBankView(QWidget):
                 item.setTextAlignment(alignment)
                 table.setItem(row_index, column_index, item)
 
-            table.setCellWidget(row_index, 9, self._make_table_button_cell("수정", "editButton"))
-            table.setCellWidget(row_index, 10, self._make_table_button_cell("비활성화", "disableButton"))
+            question_id = question.get("id")
+            is_active = question.get("status") == "활성"
+            table.setCellWidget(
+                row_index,
+                9,
+                self._make_table_button_cell(
+                    "수정",
+                    "editButton",
+                    lambda checked=False, question_id=question_id: self._handle_edit_clicked(question_id),
+                ),
+            )
+            table.setCellWidget(
+                row_index,
+                10,
+                self._make_table_button_cell(
+                    "비활성화" if is_active else "활성화",
+                    "disableButton",
+                    lambda checked=False, question_id=question_id, is_active=is_active: self._handle_status_change_clicked(
+                        question_id,
+                        is_active,
+                    ),
+                ),
+            )
             table.setRowHeight(row_index, 40)
+
+    def _handle_edit_clicked(self, question_id: int | None) -> None:
+        if question_id is not None and self.on_edit_question is not None:
+            self.on_edit_question(int(question_id))
+
+    def _handle_status_change_clicked(self, question_id: int | None, is_active: bool) -> None:
+        if question_id is not None and self.on_status_change_question is not None:
+            self.on_status_change_question(int(question_id), is_active)
 
     def get_question_form_data(self) -> dict[str, str]:
         return {
@@ -226,6 +209,65 @@ class QuestionBankView(QWidget):
             "tags": self.tags_input.text().strip(),
         }
 
+    def set_question_form_data(self, question: dict[str, str]) -> None:
+        exam_name = question.get("exam", "")
+        exam_parts = exam_name.split()
+        if len(exam_parts) >= 3:
+            self.exam_year_input.setText(exam_parts[0].replace("년", ""))
+            self._set_combo_value(self.semester_combo, exam_parts[1])
+            self._set_combo_value(self.exam_type_combo, exam_parts[2])
+
+        self._set_combo_value(self.class_combo, question.get("class_name", ""))
+        self.content_input.setPlainText(question.get("content", ""))
+        self._set_combo_value(self.type_combo, question.get("type", ""))
+        self.sub_category_input.setText(question.get("sub_category", ""))
+        self._set_combo_value(self.difficulty_combo, question.get("difficulty", ""))
+        self.answer_input.setText(question.get("answer", ""))
+        self.allowed_answers_input.setText(question.get("allowed_answers", ""))
+        self.explanation_input.setPlainText(question.get("explanation", ""))
+        self.tags_input.setText(question.get("tags", ""))
+
+    def clear_form(self) -> None:
+        self.content_input.clear()
+        self.sub_category_input.clear()
+        self.answer_input.clear()
+        self.allowed_answers_input.clear()
+        self.explanation_input.clear()
+        self.tags_input.clear()
+
+    def set_submit_button_text(self, text: str) -> None:
+        self.register_button.setText(text)
+
+    def close_question_list_window(self) -> None:
+        if self.question_list_window is not None:
+            self.question_list_window.close()
+            self.question_list_window = None
+
+    def get_search_keyword(self) -> str:
+        return self.keyword_input.text().strip()
+
+    def get_selected_filters(self) -> dict[str, str]:
+        filters = {
+            "keyword": self.get_search_keyword(),
+            "exam": self.exam_filter.currentText(),
+            "class_name": self.class_filter.currentText(),
+            "type": self.type_filter.currentText(),
+            "sub_category": self.sub_category_filter.text().strip(),
+            "difficulty": self.difficulty_filter.currentText(),
+            "tag": self.tag_filter.text().strip(),
+        }
+
+        if filters["exam"] == "전체 시험":
+            filters["exam"] = ""
+        if filters["class_name"] == "전체 반":
+            filters["class_name"] = ""
+        if filters["type"] == "전체 유형":
+            filters["type"] = ""
+        if filters["difficulty"] == "전체 난이도":
+            filters["difficulty"] = ""
+
+        return filters
+
     def get_filter_data(self) -> dict[str, str]:
         return {
             "keyword": self.keyword_input.text().strip(),
@@ -242,13 +284,17 @@ class QuestionBankView(QWidget):
         year_label = year if year.endswith("년") else f"{year}년"
         return f"{year_label} {self.semester_combo.currentText()} {self.exam_type_combo.currentText()}"
 
-    def _on_register_clicked(self) -> None:
-        pass
-
-    def _on_search_clicked(self) -> None:
-        pass
+    def _set_combo_value(self, combo: QComboBox, value: str) -> None:
+        if not value:
+            return
+        index = combo.findText(value)
+        if index >= 0:
+            combo.setCurrentIndex(index)
 
     def _on_reset_filter_clicked(self) -> None:
+        self.clear_filters()
+
+    def clear_filters(self) -> None:
         self.keyword_input.clear()
         self.exam_filter.setCurrentIndex(0)
         self.class_filter.setCurrentIndex(0)
@@ -320,11 +366,10 @@ class QuestionBankView(QWidget):
 
         button_row = QHBoxLayout()
         button_row.addStretch()
-        register_button = QPushButton("문제 등록")
-        register_button.setObjectName("primaryButton")
-        register_button.setFixedWidth(130)
-        register_button.clicked.connect(self._on_register_clicked)
-        button_row.addWidget(register_button)
+        self.register_button = QPushButton("문제 등록")
+        self.register_button.setObjectName("primaryButton")
+        self.register_button.setFixedWidth(130)
+        button_row.addWidget(self.register_button)
         layout.addLayout(button_row)
 
         return card
@@ -359,11 +404,9 @@ class QuestionBankView(QWidget):
         self.tag_filter = QLineEdit()
         self.tag_filter.setPlaceholderText("태그")
 
-        search_button = QPushButton("검색")
-        search_button.setObjectName("primaryButton")
-        search_button.clicked.connect(self._on_search_clicked)
-        reset_button = QPushButton("초기화")
-        reset_button.clicked.connect(self._on_reset_filter_clicked)
+        self.search_button = QPushButton("검색")
+        self.search_button.setObjectName("primaryButton")
+        self.reset_filter_button = QPushButton("초기화")
 
         filters.addWidget(self.keyword_input, 2)
         filters.addWidget(self.exam_filter, 2)
@@ -372,8 +415,8 @@ class QuestionBankView(QWidget):
         filters.addWidget(self.sub_category_filter, 1)
         filters.addWidget(self.difficulty_filter, 1)
         filters.addWidget(self.tag_filter, 1)
-        filters.addWidget(search_button)
-        filters.addWidget(reset_button)
+        filters.addWidget(self.search_button)
+        filters.addWidget(self.reset_filter_button)
         layout.addLayout(filters)
 
         return card
@@ -397,19 +440,6 @@ class QuestionBankView(QWidget):
         header.addWidget(list_button)
         layout.addLayout(header)
 
-        self.questions_table = QTableWidget(0, 11)
-        self.questions_table.setHorizontalHeaderLabels(
-            ["시험", "반", "문제 내용", "유형", "세부 분류", "난이도", "기준 정답", "태그", "상태", "수정", "비활성화"]
-        )
-        self.questions_table.verticalHeader().setVisible(False)
-        self.questions_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.questions_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Interactive)
-        self.questions_table.setColumnWidth(2, 330)
-        self.questions_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.questions_table.setSelectionMode(QTableWidget.NoSelection)
-        self.questions_table.setAlternatingRowColors(False)
-        layout.addWidget(self.questions_table, 1)
-
         return card
 
     def _make_labeled_widget(self, label_text: str, field: QWidget) -> QWidget:
@@ -425,20 +455,23 @@ class QuestionBankView(QWidget):
 
         return wrapper
 
-    def _make_table_button_cell(self, text: str, object_name: str) -> QWidget:
+    def _make_table_button_cell(self, text: str, object_name: str, on_clicked=None, enabled: bool = True) -> QWidget:
         cell = QWidget()
         layout = QHBoxLayout(cell)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addStretch()
-        layout.addWidget(self._make_table_button(text, object_name))
+        layout.addWidget(self._make_table_button(text, object_name, on_clicked, enabled))
         layout.addStretch()
         return cell
 
-    def _make_table_button(self, text: str, object_name: str) -> QPushButton:
+    def _make_table_button(self, text: str, object_name: str, on_clicked=None, enabled: bool = True) -> QPushButton:
         button = QPushButton(text)
         button.setObjectName(object_name)
         button.setFixedSize(78, 26)
+        button.setEnabled(enabled)
+        if on_clicked is not None:
+            button.clicked.connect(on_clicked)
         return button
 
 
@@ -458,7 +491,7 @@ class QuestionListDialog(QDialog):
 
         self.table = QTableWidget(0, 11)
         self.table.setHorizontalHeaderLabels(
-            ["시험", "반", "문제 내용", "유형", "세부 분류", "난이도", "기준 정답", "태그", "상태", "수정", "비활성화"]
+            ["시험", "반", "문제 내용", "유형", "세부 분류", "난이도", "기준 정답", "태그", "상태", "수정", "상태 변경"]
         )
         self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -516,3 +549,8 @@ class QuestionListDialog(QDialog):
             }
             """
         )
+
+    def set_questions_data(self, questions: list[dict[str, str]]) -> None:
+        parent = self.parent()
+        if isinstance(parent, QuestionBankView):
+            parent._fill_questions_table(self.table, questions)
