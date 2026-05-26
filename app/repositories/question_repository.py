@@ -541,3 +541,56 @@ class QuestionRepository:
             raise
         finally:
             close_db_connection(conn)
+
+    @staticmethod
+    def get_questions_by_filter(
+        category: Optional[str] = None,
+        difficulty: Optional[str] = None,
+        exam_name: Optional[str] = None,
+        class_name: Optional[str] = None,
+        sub_category: Optional[str] = None,
+        active_only: bool = True,
+    ) -> List[Question]:
+        """
+        Exam builder에서 사용하는 공통 문제 조회 메서드.
+        Service가 문제 생성 조건을 넘기면 DB 조회 조건은 Repository에서만 처리한다.
+        """
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        conditions = []
+        params = []
+
+        if active_only:
+            conditions.append("is_active = 1")
+        if category:
+            conditions.append("category = ?")
+            params.append(category)
+        if difficulty:
+            conditions.append("difficulty = ?")
+            params.append(difficulty)
+        if exam_name:
+            conditions.append("exam_name = ?")
+            params.append(exam_name)
+        if class_name:
+            conditions.append("class_name = ?")
+            params.append(class_name)
+        if sub_category:
+            conditions.append("sub_category = ?")
+            params.append(sub_category)
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        try:
+            cursor.execute(
+                f"SELECT * FROM questions {where_clause} ORDER BY created_at DESC",
+                params,
+            )
+            rows = cursor.fetchall()
+            return [Question.from_dict(dict(row)) for row in rows]
+
+        except sqlite3.Error as e:
+            print(f"Database error: {e}")
+            raise
+        finally:
+            close_db_connection(conn)
