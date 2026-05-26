@@ -12,11 +12,33 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.controllers.question_controller import QuestionController
-from app.controllers.student_controller import StudentController
 from app.views.dashboard_view import DashboardView
-from app.views.question_manage_view import QuestionManageView
+from app.views.exam_builder_view import ExamBuilderView
+from app.views.question_bank_view import QuestionBankView
 from app.views.student_manage_view import StudentManageView
+
+
+class StudentControllerStub:
+    def search_students(self, keyword: str = "", class_name: str = "") -> list[dict[str, str]]:
+        del keyword, class_name
+        return [
+            {"name": "김민수", "student_number": "2024001", "class_name": "1학년 1반", "is_active": "활성"},
+            {"name": "이서연", "student_number": "2024002", "class_name": "1학년 1반", "is_active": "활성"},
+            {"name": "박지훈", "student_number": "2024003", "class_name": "1학년 2반", "is_active": "활성"},
+        ]
+
+    def create_student(self, name: str, student_number: str, class_name: str) -> None:
+        del name, student_number, class_name
+
+    def update_student(self, student_id: int, name: str, student_number: str, class_name: str) -> bool:
+        del student_id, name, student_number, class_name
+        return True
+
+    def activate_student(self, student_id: int) -> None:
+        del student_id
+
+    def deactivate_student(self, student_id: int) -> None:
+        del student_id
 
 
 class MainWindow(QMainWindow):
@@ -36,8 +58,7 @@ class MainWindow(QMainWindow):
 
         self.sidebar = Sidebar()
         self.pages = QStackedWidget()
-        self.student_controller = StudentController()
-        self.question_controller = None
+        self.student_controller = StudentControllerStub()
         self.pages.addWidget(DashboardView())
 
         for name in [
@@ -58,9 +79,12 @@ class MainWindow(QMainWindow):
         question_placeholder = self.pages.widget(2)
         self.pages.removeWidget(question_placeholder)
         question_placeholder.deleteLater()
-        question_view = QuestionManageView()
-        self.question_controller = QuestionController(question_view)
-        self.pages.insertWidget(2, question_view)
+        self.pages.insertWidget(2, QuestionBankView())
+
+        exam_placeholder = self.pages.widget(3)
+        self.pages.removeWidget(exam_placeholder)
+        exam_placeholder.deleteLater()
+        self.pages.insertWidget(3, ExamBuilderView())
 
         layout.addWidget(self.sidebar)
         layout.addWidget(self.pages, 1)
