@@ -12,8 +12,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.controllers.exam_controller import ExamController
 from app.controllers.question_controller import QuestionController
 from app.controllers.student_controller import StudentController
+from app.repositories.question_repository import QuestionRepository
+from app.services.exam_builder_service import ExamBuilderService
+from app.services.pdf_export_service import PdfExportService
 from app.views.dashboard_view import DashboardView
 from app.views.exam_builder_view import ExamBuilderView
 from app.views.question_bank_view import QuestionBankView
@@ -40,6 +44,7 @@ class MainWindow(QMainWindow):
 
         self.student_controller = StudentController()
         self.question_controller = None
+        self.exam_controller = None
 
         self.pages.addWidget(DashboardView())
 
@@ -68,7 +73,13 @@ class MainWindow(QMainWindow):
         exam_placeholder = self.pages.widget(3)
         self.pages.removeWidget(exam_placeholder)
         exam_placeholder.deleteLater()
-        self.pages.insertWidget(3, ExamBuilderView())
+        exam_view = ExamBuilderView()
+        self.exam_controller = ExamController(
+            exam_view,
+            ExamBuilderService(QuestionRepository),
+            PdfExportService(),
+        )
+        self.pages.insertWidget(3, exam_view)
 
         layout.addWidget(self.sidebar)
         layout.addWidget(self.pages, 1)

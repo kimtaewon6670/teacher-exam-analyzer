@@ -1,4 +1,4 @@
-from typing import List, Optional
+﻿from typing import List, Optional
 from app.models.exam_model import Exam
 from app.repositories.db import get_db_connection, close_db_connection
 import sqlite3
@@ -34,12 +34,12 @@ class ExamRepository:
             
             conn.commit()
             exam_id = cursor.lastrowid
-            print(f"✓ Exam created successfully (ID: {exam_id})")
+            print(f"Exam created successfully (ID: {exam_id})")
             return exam_id
             
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -67,7 +67,7 @@ class ExamRepository:
             return None
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -90,7 +90,7 @@ class ExamRepository:
             return exams
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -119,7 +119,7 @@ class ExamRepository:
             return exams
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -136,7 +136,7 @@ class ExamRepository:
             bool: 성공 여부
         """
         if not exam.exam_id:
-            print("✗ exam_id is required for update")
+            print("exam_id is required for update")
             return False
         
         conn = get_db_connection()
@@ -153,15 +153,15 @@ class ExamRepository:
             rows_affected = cursor.rowcount
             
             if rows_affected > 0:
-                print(f"✓ Exam updated successfully (ID: {exam.exam_id})")
+                print(f"Exam updated successfully (ID: {exam.exam_id})")
                 return True
             else:
-                print(f"✗ No exam found with ID: {exam.exam_id}")
+                print(f"No exam found with ID: {exam.exam_id}")
                 return False
                 
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -188,15 +188,15 @@ class ExamRepository:
             rows_affected = cursor.rowcount
             
             if rows_affected > 0:
-                print(f"✓ Exam deleted successfully (ID: {exam_id})")
+                print(f"Exam deleted successfully (ID: {exam_id})")
                 return True
             else:
-                print(f"✗ No exam found with ID: {exam_id}")
+                print(f"No exam found with ID: {exam_id}")
                 return False
                 
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -218,7 +218,7 @@ class ExamRepository:
             return count
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)

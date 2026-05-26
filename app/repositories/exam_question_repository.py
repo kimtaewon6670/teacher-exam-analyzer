@@ -1,4 +1,4 @@
-from typing import List, Optional
+﻿from typing import List, Optional
 from app.models.exam_question_model import ExamQuestion
 from app.repositories.db import get_db_connection, close_db_connection
 import sqlite3
@@ -34,12 +34,12 @@ class ExamQuestionRepository:
             
             conn.commit()
             exam_question_id = cursor.lastrowid
-            print(f"✓ ExamQuestion created successfully (ID: {exam_question_id})")
+            print(f"ExamQuestion created successfully (ID: {exam_question_id})")
             return exam_question_id
             
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -68,7 +68,7 @@ class ExamQuestionRepository:
             return exam_questions
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -97,7 +97,7 @@ class ExamQuestionRepository:
             return question_ids
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -123,15 +123,15 @@ class ExamQuestionRepository:
             rows_affected = cursor.rowcount
             
             if rows_affected > 0:
-                print(f"✓ ExamQuestions deleted successfully (Exam ID: {exam_id}, Count: {rows_affected})")
+                print(f"ExamQuestions deleted successfully (Exam ID: {exam_id}, Count: {rows_affected})")
                 return True
             else:
-                print(f"✗ No exam questions found for exam ID: {exam_id}")
+                print(f"No exam questions found for exam ID: {exam_id}")
                 return False
                 
         except sqlite3.Error as e:
             conn.rollback()
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
@@ -156,7 +156,7 @@ class ExamQuestionRepository:
             return count
             
         except sqlite3.Error as e:
-            print(f"✗ Database error: {e}")
+            print(f"Database error: {e}")
             raise
         finally:
             close_db_connection(conn)
