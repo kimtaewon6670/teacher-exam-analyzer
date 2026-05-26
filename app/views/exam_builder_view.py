@@ -5,6 +5,8 @@ from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
+    QDialog,
+    QDialogButtonBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -13,6 +15,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QFileDialog,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -63,37 +66,7 @@ class ExamBuilderView(QWidget):
                 "classes": ["1학년 1반", "1학년 2반", "1학년 3반"],
             }
         )
-        self.set_selected_questions(
-            [
-                {
-                    "question_id": 101,
-                    "content": "빈칸에 들어갈 알맞은 단어를 고르시오.",
-                    "type": "어휘",
-                    "sub_category": "동의어",
-                    "difficulty": "쉬움",
-                    "answer": "important",
-                    "tags": "vocabulary, basic",
-                },
-                {
-                    "question_id": 102,
-                    "content": "다음 문장에서 어법상 틀린 부분을 고르시오.",
-                    "type": "문법",
-                    "sub_category": "시제",
-                    "difficulty": "보통",
-                    "answer": "has gone",
-                    "tags": "grammar, tense",
-                },
-                {
-                    "question_id": 103,
-                    "content": "글의 주제로 가장 적절한 것을 고르시오.",
-                    "type": "독해",
-                    "sub_category": "주제 찾기",
-                    "difficulty": "어려움",
-                    "answer": "environmental protection",
-                    "tags": "reading, topic",
-                },
-            ]
-        )
+        self.set_selected_questions([])
 
         self.setStyleSheet(
             """
@@ -249,6 +222,53 @@ class ExamBuilderView(QWidget):
     def get_selected_question_ids(self) -> list[object]:
         return [question.get("question_id") for question in self.selected_questions if question.get("question_id") is not None]
 
+    def get_pdf_save_path(self) -> str:
+        file_path, _ = QFileDialog.getSaveFileName(self, "PDF 저장", "", "PDF Files (*.pdf)")
+        return file_path
+
+    def select_questions_from_list(self, questions: list[dict[str, object]]) -> list[dict[str, object]]:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("문제 직접 선택")
+        dialog.resize(1100, 700)
+
+        layout = QVBoxLayout(dialog)
+        table = QTableWidget(0, 6)
+        table.setHorizontalHeaderLabels(["문제 내용", "유형", "세부 분류", "난이도", "기준 정답", "태그"])
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
+        table.setColumnWidth(0, 460)
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setSelectionMode(QTableWidget.MultiSelection)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setRowCount(len(questions))
+
+        for row_index, question in enumerate(questions):
+            values = [
+                question.get("content", ""),
+                question.get("type", ""),
+                question.get("sub_category", ""),
+                question.get("difficulty", ""),
+                question.get("answer", ""),
+                question.get("tags", ""),
+            ]
+            for column_index, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter if column_index == 0 else Qt.AlignCenter)
+                table.setItem(row_index, column_index, item)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(table)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.Accepted:
+            return []
+
+        selected_rows = sorted({index.row() for index in table.selectionModel().selectedRows()})
+        return [questions[row] for row in selected_rows]
+
     def clear_form(self) -> None:
         self.exam_name_input.clear()
         self.exam_description_input.clear()
@@ -270,6 +290,9 @@ class ExamBuilderView(QWidget):
 
     def show_message(self, message: str) -> None:
         QMessageBox.information(self, "안내", message)
+
+    def show_error(self, message: str) -> None:
+        QMessageBox.warning(self, "오류", message)
 
     def set_filter_options(self, options: dict[str, list[str]]) -> None:
         self._set_combo_options(self.sub_category_combo, ["전체 분류"] + options.get("sub_categories", []))
