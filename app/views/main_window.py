@@ -15,7 +15,8 @@ from PySide6.QtWidgets import (
 from app.controllers.question_controller import QuestionController
 from app.controllers.student_controller import StudentController
 from app.views.dashboard_view import DashboardView
-from app.views.question_manage_view import QuestionManageView
+from app.views.exam_builder_view import ExamBuilderView
+from app.views.question_bank_view import QuestionBankView
 from app.views.student_manage_view import StudentManageView
 
 
@@ -36,8 +37,10 @@ class MainWindow(QMainWindow):
 
         self.sidebar = Sidebar()
         self.pages = QStackedWidget()
+
         self.student_controller = StudentController()
         self.question_controller = None
+
         self.pages.addWidget(DashboardView())
 
         for name in [
@@ -58,9 +61,14 @@ class MainWindow(QMainWindow):
         question_placeholder = self.pages.widget(2)
         self.pages.removeWidget(question_placeholder)
         question_placeholder.deleteLater()
-        question_view = QuestionManageView()
+        question_view = QuestionBankView()
         self.question_controller = QuestionController(question_view)
         self.pages.insertWidget(2, question_view)
+
+        exam_placeholder = self.pages.widget(3)
+        self.pages.removeWidget(exam_placeholder)
+        exam_placeholder.deleteLater()
+        self.pages.insertWidget(3, ExamBuilderView())
 
         layout.addWidget(self.sidebar)
         layout.addWidget(self.pages, 1)
