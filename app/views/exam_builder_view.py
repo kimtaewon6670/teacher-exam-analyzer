@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -43,7 +44,17 @@ class ExamBuilderView(QWidget):
         self.generated_exams: list[dict[str, object]] = []
         self.selected_questions_window: SelectedQuestionListDialog | None = None
 
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        root_layout.addWidget(scroll)
+
+        content = QWidget()
+        scroll.setWidget(content)
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(28, 26, 28, 24)
         layout.setSpacing(16)
 
@@ -61,6 +72,7 @@ class ExamBuilderView(QWidget):
         layout.addWidget(self._build_selected_questions_card(), 1)
         layout.addWidget(self._build_generated_exams_card(), 1)
         layout.addWidget(self._build_output_action_card())
+        layout.addStretch()
 
         self.set_filter_options(
             {
@@ -70,57 +82,8 @@ class ExamBuilderView(QWidget):
                 "classes": ["1학년 1반", "1학년 2반", "1학년 3반"],
             }
         )
-        self.set_selected_questions(
-            [
-                {
-                    "question_id": 101,
-                    "content": "빈칸에 들어갈 알맞은 단어를 고르시오.",
-                    "type": "어휘",
-                    "sub_category": "동의어",
-                    "difficulty": "쉬움",
-                    "answer": "important",
-                    "tags": "vocabulary, basic",
-                },
-                {
-                    "question_id": 102,
-                    "content": "다음 문장에서 어법상 틀린 부분을 고르시오.",
-                    "type": "문법",
-                    "sub_category": "시제",
-                    "difficulty": "보통",
-                    "answer": "has gone",
-                    "tags": "grammar, tense",
-                },
-                {
-                    "question_id": 103,
-                    "content": "글의 주제로 가장 적절한 것을 고르시오.",
-                    "type": "독해",
-                    "sub_category": "주제 찾기",
-                    "difficulty": "어려움",
-                    "answer": "environmental protection",
-                    "tags": "reading, topic",
-                },
-            ]
-        )
-        self.set_generated_exams(
-            [
-                {
-                    "exam_id": 1,
-                    "exam_name": "2024년 1학기 중간고사",
-                    "class_name": "1학년 1반",
-                    "exam_date": "2024-05-20",
-                    "question_count": 30,
-                    "status": "저장됨",
-                },
-                {
-                    "exam_id": 2,
-                    "exam_name": "2024년 1학기 기말고사",
-                    "class_name": "1학년 2반",
-                    "exam_date": "2024-07-10",
-                    "question_count": 25,
-                    "status": "저장됨",
-                },
-            ]
-        )
+        self.set_selected_questions([])
+        self.set_generated_exams([])
 
         self.setStyleSheet(
             """
@@ -265,7 +228,11 @@ class ExamBuilderView(QWidget):
             self.selected_questions_window.set_questions_data(questions)
 
     def get_selected_question_ids(self) -> list[object]:
-        return [question.get("question_id") for question in self.selected_questions if question.get("question_id") is not None]
+        return [
+            question.get("question_id")
+            for question in self.selected_questions
+            if question.get("question_id") is not None
+        ]
 
     def set_generated_exams(self, exams: list[dict[str, object]]) -> None:
         self.generated_exams = exams
@@ -377,6 +344,7 @@ class ExamBuilderView(QWidget):
 
     def _build_exam_info_card(self) -> QFrame:
         card = self._make_card("시험 기본 정보")
+        card.setMinimumHeight(210)
         layout = card.layout()
 
         form = QGridLayout()
@@ -412,6 +380,7 @@ class ExamBuilderView(QWidget):
 
     def _build_condition_cart_card(self) -> QFrame:
         card = self._make_card("문제 추출 조건")
+        card.setMinimumHeight(210)
         layout = card.layout()
 
         control_row = QHBoxLayout()
@@ -484,6 +453,7 @@ class ExamBuilderView(QWidget):
 
     def _build_selected_questions_card(self) -> QFrame:
         card = self._make_card("선택된 문제 목록")
+        card.setMinimumHeight(190)
         layout = card.layout()
 
         header = QHBoxLayout()
@@ -509,6 +479,7 @@ class ExamBuilderView(QWidget):
 
     def _build_generated_exams_card(self) -> QFrame:
         card = self._make_card("생성된 시험지 목록")
+        card.setMinimumHeight(170)
         layout = card.layout()
 
         self.generated_exams_table = QTableWidget(0, 7)
@@ -526,6 +497,7 @@ class ExamBuilderView(QWidget):
 
     def _build_output_action_card(self) -> QFrame:
         card = self._make_card("시험지 미리보기 / 저장")
+        card.setMinimumHeight(92)
         layout = card.layout()
 
         row = QHBoxLayout()
@@ -640,7 +612,6 @@ class ExamBuilderView(QWidget):
 
     def _delete_generated_exam(self, exam_id: object) -> None:
         self.exam_delete_requested.emit(exam_id)
-        self.set_generated_exams([exam for exam in self.generated_exams if exam.get("exam_id") != exam_id])
 
     def _make_card(self, title: str) -> QFrame:
         card = QFrame()
