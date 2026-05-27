@@ -89,13 +89,14 @@ class ExamController:
 
     def auto_extract_questions(self) -> None:
         criteria = self._build_service_criteria()
+        criteria["selected_question_ids"] = self._get_selected_question_ids()
+        criteria["selected_questions"] = self._get_selected_view_questions()
         if criteria["total_count"] <= 0:
             self._show_error("추출할 문항 수를 입력해주세요.")
             return
 
         self.current_questions = self.builder_service.create_random_exam(criteria)
-        self.selected_questions = [self._to_view_question(question) for question in self.current_questions]
-        self.view.set_selected_questions(self.selected_questions)
+        self._set_selected_questions(self.current_questions)
 
         if hasattr(self.view, "set_build_summary_data"):
             self.view.set_build_summary_data(self.builder_service.get_last_build_summary())
@@ -108,13 +109,16 @@ class ExamController:
         if not selected_questions:
             return
 
-        existing_ids = set(self.view.get_selected_question_ids())
+        existing_ids = set(self._get_selected_question_ids())
         for question in selected_questions:
-            if question.get("question_id") not in existing_ids:
+            question_id = self._get_question_id(question)
+            if question_id not in existing_ids:
                 self.selected_questions.append(question)
-                existing_ids.add(question.get("question_id"))
+                if question_id is not None:
+                    existing_ids.add(question_id)
 
         self.view.set_selected_questions(self.selected_questions)
+        self.current_questions = list(self.selected_questions)
 
     def clear_selection(self) -> None:
         self.selected_questions = []
@@ -131,7 +135,7 @@ class ExamController:
 
     def save_exam(self) -> None:
         exam_data = self.view.get_exam_form_data()
-        question_ids = self.view.get_selected_question_ids()
+        question_ids = self._get_selected_question_ids()
         if not exam_data.get("exam_name"):
             self._show_error("시험명을 입력해주세요.")
             return
@@ -153,7 +157,7 @@ class ExamController:
             )
 
         self.saved_exam_id = exam_id
-        self.selected_questions = list(self.view.selected_questions)
+        self.selected_questions = self._get_selected_view_questions()
         self.view.set_selected_questions(self.selected_questions)
         self._refresh_generated_exams()
         self._show_message("시험지가 저장되었습니다.")
@@ -178,7 +182,7 @@ class ExamController:
             self._show_error("삭제할 시험지를 찾을 수 없습니다.")
 
     def export_pdf(self) -> None:
-        questions = list(getattr(self.view, "selected_questions", []))
+        questions = self._get_selected_view_questions()
         if not questions:
             self._show_error("PDF로 출력할 문제가 없습니다.")
             return
@@ -191,10 +195,6 @@ class ExamController:
 
         success, message = self.pdf_service.export_exam_pdf(save_path, self.view.get_exam_form_data(), questions)
         self._show_export_result(success, message)
-
-    def preview_exam(self) -> None:
-        count = len(self.view.get_selected_question_ids())
-        self._show_message(f"선택된 문제 {count}문항으로 시험지를 구성합니다.")
 
     def on_add_cart_clicked(self) -> None:
         if hasattr(self.view, "get_exam_cart_item_data"):
@@ -232,6 +232,7 @@ class ExamController:
         criteria = self._get_exam_criteria()
         criteria["cart_items"] = self._get_cart_items()
         criteria["selected_question_ids"] = self._get_selected_question_ids()
+        criteria["selected_questions"] = self._get_selected_view_questions()
 
         is_valid, message = self.builder_service.validate_exam_request(criteria)
         if not is_valid:
@@ -253,17 +254,16 @@ class ExamController:
         if hasattr(self.view, "select_questions_from_list"):
             selected_questions = self.view.select_questions_from_list(selectable_data)
             if selected_questions is not None:
-                self._set_selected_questions(selected_questions)
+                self._set_selected_questions(
+                    self._merge_selected_questions(
+                        self._get_selected_view_questions(),
+                        selected_questions,
+                    )
+                )
 
     def on_clear_selection_clicked(self) -> None:
         self.current_questions = []
         self._set_selected_questions([])
-
-    def on_preview_clicked(self) -> None:
-        if not self.current_questions:
-            self.on_generate_clicked()
-            return
-        self._set_selected_questions(self.current_questions)
 
     def on_question_exclude_requested(self, question_id: Any) -> None:
         try:
@@ -377,8 +377,22 @@ class ExamController:
 
     def _get_selected_question_ids(self) -> list[int]:
         if hasattr(self.view, "get_selected_question_ids"):
-            return self.view.get_selected_question_ids() or []
-        return [self._get_question_id(question) for question in self.current_questions if self._get_question_id(question)]
+            selected_ids = self.view.get_selected_question_ids() or []
+            if selected_ids:
+                normalized_ids = []
+                for question_id in selected_ids:
+                    try:
+                        normalized_ids.append(int(question_id))
+                    except (TypeError, ValueError):
+                        continue
+                if normalized_ids:
+                    return normalized_ids
+
+        return [
+            question_id
+            for question in self._get_selected_view_questions()
+            if (question_id := self._get_question_id(question)) is not None
+        ]
 
     def _set_selected_questions(self, questions: list[Any]) -> None:
         self.current_questions = list(questions)
@@ -388,6 +402,36 @@ class ExamController:
             self.view.set_selected_questions(view_questions)
         if hasattr(self.view, "set_preview_data"):
             self.view.set_preview_data(view_questions)
+
+    def _get_selected_view_questions(self) -> list[dict[str, Any]]:
+        view_selected = getattr(self.view, "selected_questions", None)
+        if view_selected:
+            return [self._to_view_question(question) for question in view_selected]
+        if self.selected_questions:
+            return [self._to_view_question(question) for question in self.selected_questions]
+        return [self._to_view_question(question) for question in self.current_questions]
+
+    def _merge_selected_questions(
+        self,
+        base_questions: list[Any],
+        added_questions: list[Any],
+    ) -> list[dict[str, Any]]:
+        merged = [self._to_view_question(question) for question in base_questions]
+        existing_ids = {
+            question_id
+            for question in merged
+            if (question_id := self._get_question_id(question)) is not None
+        }
+
+        for question in added_questions:
+            question_id = self._get_question_id(question)
+            if question_id is not None and question_id in existing_ids:
+                continue
+            merged.append(self._to_view_question(question))
+            if question_id is not None:
+                existing_ids.add(question_id)
+
+        return merged
 
     def _get_save_path(self) -> str:
         if hasattr(self.view, "get_pdf_save_path"):
@@ -416,13 +460,79 @@ class ExamController:
 
     def _get_question_id(self, question: Any) -> int | None:
         if isinstance(question, dict):
-            value = question.get("question_id", question.get("id"))
+            value = question.get(
+                "question_id",
+                question.get("id", question.get("question_no", question.get("no"))),
+            )
         else:
             value = getattr(question, "question_id", None)
         try:
             return int(value)
         except (TypeError, ValueError):
             return None
+
+    def preview_exam(self) -> None:
+        questions = self._get_selected_view_questions()
+        if not questions:
+            self._show_error("미리보기할 문제가 없습니다.")
+            return
+
+        self._show_exam_preview(questions)
+
+    def on_preview_clicked(self) -> None:
+        if not self.current_questions and not self._get_selected_view_questions():
+            self.on_generate_clicked()
+
+        questions = self._get_selected_view_questions()
+        if questions:
+            self._show_exam_preview(questions)
+
+    def _show_exam_preview(self, questions: list[Any]) -> None:
+        view_questions = [self._to_view_question(question) for question in questions]
+        self.current_questions = list(view_questions)
+        self.selected_questions = view_questions
+
+        if hasattr(self.view, "set_selected_questions"):
+            self.view.set_selected_questions(view_questions)
+        if hasattr(self.view, "set_preview_data"):
+            self.view.set_preview_data(view_questions)
+
+        exam_data = self._get_exam_criteria()
+        preview_method_names = (
+            "show_exam_preview",
+            "open_exam_preview",
+            "show_preview",
+            "open_preview",
+            "display_exam_preview",
+            "display_preview",
+        )
+        for method_name in preview_method_names:
+            method = getattr(self.view, method_name, None)
+            if method is None:
+                continue
+            if self._call_preview_method(method, exam_data, view_questions):
+                return
+
+    def _call_preview_method(
+        self,
+        method: Any,
+        exam_data: dict[str, Any],
+        questions: list[dict[str, Any]],
+    ) -> bool:
+        call_patterns = (
+            (exam_data, questions),
+            (questions, exam_data),
+            (questions,),
+            (),
+        )
+        for args in call_patterns:
+            try:
+                method(*args)
+                return True
+            except TypeError:
+                continue
+
+        return False
 
     def _show_message(self, message: str) -> None:
         if hasattr(self.view, "show_message"):
