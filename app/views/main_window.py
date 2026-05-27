@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.controllers.exam_controller import ExamController
+from app.controllers.analysis_controller import AnalysisController
 from app.controllers.question_controller import QuestionController
 from app.controllers.result_controller import ResultController
 from app.controllers.student_controller import StudentController
@@ -49,6 +50,7 @@ class MainWindow(QMainWindow):
         self.question_controller = None
         self.exam_controller = None
         self.result_controller = None
+        self.analysis_controller = None
 
         self.pages.addWidget(DashboardView())
 
@@ -95,7 +97,9 @@ class MainWindow(QMainWindow):
         analysis_placeholder = self.pages.widget(5)
         self.pages.removeWidget(analysis_placeholder)
         analysis_placeholder.deleteLater()
-        self.pages.insertWidget(5, AnalysisView())
+        analysis_view = AnalysisView()
+        self.analysis_controller = AnalysisController(analysis_view)
+        self.pages.insertWidget(5, analysis_view)
 
         layout.addWidget(self.sidebar)
         layout.addWidget(self.pages, 1)

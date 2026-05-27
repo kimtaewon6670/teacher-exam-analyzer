@@ -15,16 +15,6 @@ from app.utils.constants import CORRECT
 class AnalysisService:
     """Core analysis logic for exam results and weakness summaries."""
 
-    SAMPLE_EXAMS = [
-        {"id": 1, "name": "2024년 1학기 중간고사"},
-        {"id": 2, "name": "2024년 1학기 기말고사"},
-    ]
-    SAMPLE_CLASSES = [
-        {"id": "1-1", "name": "1학년 1반"},
-        {"id": "1-2", "name": "1학년 2반"},
-        {"id": "1-3", "name": "1학년 3반"},
-    ]
-
     def __init__(
         self,
         exam_repository: Any = ExamRepository,
@@ -59,8 +49,7 @@ class AnalysisService:
         except Exception:
             pass
 
-        # TODO: Repository 연결이 안정화되면 화면 확인용 샘플데이터 제거.
-        return list(self.SAMPLE_EXAMS)
+        return []
 
     def get_class_options(self) -> list[dict[str, Any]]:
         class_ids = []
@@ -74,15 +63,14 @@ class AnalysisService:
         if class_ids:
             return [{"id": class_id, "name": str(class_id)} for class_id in class_ids]
 
-        # TODO: 별도 Class Repository가 추가되면 여기에서 반 목록을 조회하도록 교체.
-        return list(self.SAMPLE_CLASSES)
+        return []
 
     def analyze(self, filters: dict[str, Any]) -> dict[str, Any]:
         exam_id = filters.get("exam_id")
         class_id = filters.get("class_id")
 
         if exam_id is None:
-            return self._sample_analysis()
+            return self._empty_analysis()
 
         try:
             results = self.result_repository.read_by_exam(int(exam_id))
@@ -102,7 +90,7 @@ class AnalysisService:
         except Exception:
             pass
 
-        return self._sample_analysis()
+        return self._empty_analysis()
 
     def _build_analysis(
         self,
@@ -302,61 +290,20 @@ class AnalysisService:
             return default
         return value
 
-    def _sample_analysis(self) -> dict[str, Any]:
-        # TODO: 실제 Repository 데이터가 준비되면 화면 확인용 샘플데이터 제거.
+    def _empty_analysis(self) -> dict[str, Any]:
         return {
             "summary": {
-                "student_count": "28명",
-                "average_score": "72.35점",
-                "correct_rate": "72.45%",
-                "wrong_rate": "27.55%",
-                "weak_type": "문법",
+                "student_count": "0명",
+                "average_score": "0.00점",
+                "correct_rate": "0.00%",
+                "wrong_rate": "0.00%",
+                "weak_type": "-",
             },
-            "question_analysis": [
-                {
-                    "question_number": 1,
-                    "content": "빈칸에 들어갈 알맞은 단어",
-                    "type": "어휘",
-                    "sub_category": "동의어",
-                    "difficulty": "쉬움",
-                    "correct_rate": 85.1,
-                    "wrong_rate": 14.9,
-                },
-                {
-                    "question_number": 2,
-                    "content": "문장에서 틀린 부분 찾기",
-                    "type": "문법",
-                    "sub_category": "시제",
-                    "difficulty": "보통",
-                    "correct_rate": 58.3,
-                    "wrong_rate": 41.7,
-                },
-                {
-                    "question_number": 3,
-                    "content": "글의 주제 찾기",
-                    "type": "독해",
-                    "sub_category": "주제",
-                    "difficulty": "어려움",
-                    "correct_rate": 52.0,
-                    "wrong_rate": 48.0,
-                },
-            ],
-            "type_analysis": [
-                {"type": "어휘", "correct_rate": 78.1, "wrong_rate": 21.9},
-                {"type": "문법", "correct_rate": 65.2, "wrong_rate": 34.8},
-                {"type": "독해", "correct_rate": 74.3, "wrong_rate": 25.7},
-            ],
-            "sub_category_analysis": [
-                {"sub_category": "동의어", "correct_rate": 85.1, "wrong_rate": 14.9},
-                {"sub_category": "시제", "correct_rate": 58.3, "wrong_rate": 41.7},
-                {"sub_category": "주제 찾기", "correct_rate": 72.6, "wrong_rate": 27.4},
-            ],
-            "difficulty_analysis": [
-                {"difficulty": "쉬움", "correct_rate": 85.1, "wrong_rate": 14.9},
-                {"difficulty": "보통", "correct_rate": 72.4, "wrong_rate": 27.6},
-                {"difficulty": "어려움", "correct_rate": 56.3, "wrong_rate": 43.7},
-            ],
+            "question_analysis": [],
+            "type_analysis": [],
+            "sub_category_analysis": [],
+            "difficulty_analysis": [],
             "weakness_summary": {
-                "feedback": "문법 유형과 어려움 난이도 문항에서 정답률이 낮습니다. 시제 관련 문항을 우선 복습하고 유사 문항을 추가 연습하세요."
+                "feedback": "분석할 결과 데이터가 없습니다."
             },
         }

@@ -58,7 +58,6 @@ class AnalysisView(QWidget):
         layout.addWidget(self._build_weakness_card())
         layout.addStretch()
 
-        self._load_sample_data()
         self.setStyleSheet(
             """
             #analysisView {
@@ -216,64 +215,6 @@ class AnalysisView(QWidget):
 
     def show_error(self, message: str) -> None:
         QMessageBox.warning(self, "오류", message)
-
-    def _load_sample_data(self) -> None:
-        self.set_exam_options(
-            [
-                {"id": 1, "name": "2024년 1학기 중간고사"},
-                {"id": 2, "name": "2024년 1학기 기말고사"},
-            ]
-        )
-        self.set_class_options(
-            [
-                {"id": "1-1", "name": "1학년 1반"},
-                {"id": "1-2", "name": "1학년 2반"},
-                {"id": "1-3", "name": "1학년 3반"},
-            ]
-        )
-        self.set_summary_data(
-            {
-                "student_count": "28명",
-                "average_score": "72.35점",
-                "correct_rate": "72.45%",
-                "wrong_rate": "27.55%",
-                "weak_type": "문법",
-                "interpretation": "현재 반은 문법 유형과 어려움 난이도에서 낮은 정답률을 보입니다.",
-            }
-        )
-        self.set_question_analysis_data(
-            [
-                {"question_number": 1, "content": "빈칸에 들어갈 알맞은 단어", "type": "어휘", "sub_category": "동의어", "difficulty": "쉬움", "correct_rate": "85.1%", "wrong_rate": "14.9%", "is_weak": "아니오"},
-                {"question_number": 2, "content": "어법상 틀린 부분 찾기", "type": "문법", "sub_category": "시제", "difficulty": "보통", "correct_rate": "58.3%", "wrong_rate": "41.7%", "is_weak": "예"},
-                {"question_number": 3, "content": "글의 주제 찾기", "type": "독해", "sub_category": "주제", "difficulty": "어려움", "correct_rate": "52.0%", "wrong_rate": "48.0%", "is_weak": "예"},
-            ]
-        )
-        self.set_type_analysis_data(
-            [
-                {"type": "어휘", "correct_rate": 78.1, "wrong_rate": 21.9, "note": "양호"},
-                {"type": "문법", "correct_rate": 65.2, "wrong_rate": 34.8, "note": "취약"},
-                {"type": "독해", "correct_rate": 74.3, "wrong_rate": 25.7, "note": "보통"},
-            ]
-        )
-        self.set_sub_category_analysis_data(
-            [
-                {"sub_category": "시제", "correct_rate": 58.3, "wrong_rate": 41.7, "note": "취약"},
-                {"sub_category": "관계대명사", "correct_rate": 65.2, "wrong_rate": 34.8, "note": "보완 필요"},
-                {"sub_category": "주제 찾기", "correct_rate": 72.6, "wrong_rate": 27.4, "note": "보통"},
-            ]
-        )
-        self.set_difficulty_analysis_data(
-            [
-                {"difficulty": "쉬움", "correct_rate": 85.1, "wrong_rate": 14.9, "achievement_gap": "기준 이상"},
-                {"difficulty": "보통", "correct_rate": 72.4, "wrong_rate": 27.6, "achievement_gap": "보통"},
-                {"difficulty": "어려움", "correct_rate": 56.3, "wrong_rate": 43.7, "achievement_gap": "보충 필요"},
-            ]
-        )
-        self.set_weakness_summary(
-            {
-                "feedback": "시제 문제를 짧은 문장 단위로 다시 연습한 뒤 독해 지문에 적용해 보세요.",
-            }
-        )
 
     def _build_filter_card(self) -> QFrame:
         card = self._make_card("분석 조건 선택")
