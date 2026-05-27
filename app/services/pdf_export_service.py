@@ -34,7 +34,6 @@ class PdfExportService:
                     y = height - 50
 
                 content = self._get_question_value(question, "content", "question_text")
-                answer = self._get_question_value(question, "answer", "answer_text")
 
                 for line_index, line in enumerate(self._wrap_text(f"{index}. {content}", 86)):
                     if y < 80:
@@ -45,8 +44,7 @@ class PdfExportService:
                     pdf.drawString(x, y, line)
                     y -= 16
 
-                pdf.drawString(70, y, f"정답: {answer}")
-                y -= 26
+                y -= 10
 
             pdf.save()
             return True, "PDF 저장 완료"
