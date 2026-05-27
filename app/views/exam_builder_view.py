@@ -33,12 +33,14 @@ class ExamBuilderView(QWidget):
     pdf_export_requested = Signal()
     save_exam_requested = Signal()
     question_exclude_requested = Signal(object)
+    exam_delete_requested = Signal(object)
 
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("examBuilderView")
         self.condition_cart_items: list[dict[str, object]] = []
         self.selected_questions: list[dict[str, object]] = []
+        self.generated_exams: list[dict[str, object]] = []
         self.selected_questions_window: SelectedQuestionListDialog | None = None
 
         layout = QVBoxLayout(self)
@@ -57,6 +59,7 @@ class ExamBuilderView(QWidget):
 
         layout.addWidget(self._build_selection_action_card())
         layout.addWidget(self._build_selected_questions_card(), 1)
+        layout.addWidget(self._build_generated_exams_card(), 1)
         layout.addWidget(self._build_output_action_card())
 
         self.set_filter_options(
@@ -68,6 +71,7 @@ class ExamBuilderView(QWidget):
             }
         )
         self.set_selected_questions([])
+        self.set_generated_exams([])
 
         self.setStyleSheet(
             """
@@ -217,6 +221,37 @@ class ExamBuilderView(QWidget):
             for question in self.selected_questions
             if question.get("question_id") is not None
         ]
+
+    def set_generated_exams(self, exams: list[dict[str, object]]) -> None:
+        self.generated_exams = exams
+        self.generated_exams_table.setRowCount(len(exams))
+
+        for row_index, exam in enumerate(exams):
+            values = [
+                str(row_index + 1),
+                str(exam.get("exam_name", "")),
+                str(exam.get("class_name", "")),
+                str(exam.get("exam_date", "")),
+                str(exam.get("question_count", "")),
+                str(exam.get("status", "")),
+            ]
+
+            for column_index, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                alignment = Qt.AlignLeft | Qt.AlignVCenter if column_index == 1 else Qt.AlignCenter
+                item.setTextAlignment(alignment)
+                self.generated_exams_table.setItem(row_index, column_index, item)
+
+            exam_id = exam.get("exam_id")
+            self.generated_exams_table.setCellWidget(
+                row_index,
+                6,
+                self._make_table_button_cell("삭제", lambda checked=False, eid=exam_id: self._delete_generated_exam(eid)),
+            )
+            self.generated_exams_table.setRowHeight(row_index, 38)
+
+    def get_generated_exam_ids(self) -> list[object]:
+        return [exam.get("exam_id") for exam in self.generated_exams if exam.get("exam_id") is not None]
 
     def get_pdf_save_path(self) -> str:
         file_path, _ = QFileDialog.getSaveFileName(self, "PDF 저장", "", "PDF Files (*.pdf)")
@@ -427,6 +462,23 @@ class ExamBuilderView(QWidget):
         layout.addWidget(self.selected_questions_table, 1)
         return card
 
+    def _build_generated_exams_card(self) -> QFrame:
+        card = self._make_card("생성된 시험지 목록")
+        layout = card.layout()
+
+        self.generated_exams_table = QTableWidget(0, 7)
+        self.generated_exams_table.setHorizontalHeaderLabels(
+            ["순번", "시험명", "대상 반", "시험 일자", "문항 수", "상태", "삭제"]
+        )
+        self.generated_exams_table.verticalHeader().setVisible(False)
+        self.generated_exams_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.generated_exams_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+        self.generated_exams_table.setColumnWidth(1, 360)
+        self.generated_exams_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.generated_exams_table.setSelectionMode(QTableWidget.NoSelection)
+        layout.addWidget(self.generated_exams_table, 1)
+        return card
+
     def _build_output_action_card(self) -> QFrame:
         card = self._make_card("시험지 미리보기 / 저장")
         layout = card.layout()
@@ -540,6 +592,10 @@ class ExamBuilderView(QWidget):
         self.set_selected_questions(
             [question for question in self.selected_questions if question.get("question_id") != question_id]
         )
+
+    def _delete_generated_exam(self, exam_id: object) -> None:
+        self.exam_delete_requested.emit(exam_id)
+        self.set_generated_exams([exam for exam in self.generated_exams if exam.get("exam_id") != exam_id])
 
     def _make_card(self, title: str) -> QFrame:
         card = QFrame()
