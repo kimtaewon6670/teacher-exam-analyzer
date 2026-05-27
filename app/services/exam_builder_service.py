@@ -9,7 +9,7 @@ from app.models.question_model import Question
 
 class ExamBuilderService:
     DEFAULT_QUESTION_TYPES = ("어휘", "문법", "독해")
-    DEFAULT_DIFFICULTIES = ("쉬움", "중간", "어려움")
+    DEFAULT_DIFFICULTIES = ("쉬움", "보통", "어려움")
 
     def __init__(self, question_repository) -> None:
         self.question_repository = question_repository
@@ -20,15 +20,37 @@ class ExamBuilderService:
         시험 생성 공통 진입점.
         cart_items가 있으면 장바구니 방식으로, 없으면 기존 category_counts/difficulty_counts 방식으로 생성한다.
         """
+        selected_questions = self._get_selected_questions(criteria)
+        selected_ids = {
+            question.question_id for question in selected_questions if question.question_id is not None
+        }
+
         if criteria.get("cart_items"):
-            return self.create_exam_from_cart(criteria)
+            auto_questions = self.create_exam_from_cart(criteria, selected_ids=selected_ids)
+        else:
+            auto_questions = self.create_exam_from_counts(criteria, selected_ids=selected_ids)
 
-        return self.create_exam_from_counts(criteria)
+        combined_questions = self._deduplicate_questions([*selected_questions, *auto_questions])
+        if selected_questions:
+            self.last_build_summary["manual_selected_count"] = len(selected_questions)
+            self.last_build_summary["selected_count"] = len(combined_questions)
+            self.last_build_summary["requested_count"] = (
+                self.last_build_summary.get("requested_count", 0) + len(selected_questions)
+            )
+            self.last_build_summary["shortage"] = max(
+                self.last_build_summary.get("requested_count", 0) - len(combined_questions),
+                0,
+            )
+        return combined_questions
 
-    def create_exam_from_counts(self, criteria: dict[str, Any]) -> list[Question]:
+    def create_exam_from_counts(
+        self,
+        criteria: dict[str, Any],
+        selected_ids: set[int] | None = None,
+    ) -> list[Question]:
         candidates = self._get_candidates(criteria)
         selected_questions: list[Question] = []
-        selected_ids: set[int] = set()
+        selected_ids = selected_ids or set()
         summary_items = []
 
         for category, count in criteria.get("category_counts", {}).items():
@@ -82,14 +104,18 @@ class ExamBuilderService:
         }
         return selected_questions
 
-    def create_exam_from_cart(self, criteria: dict[str, Any]) -> list[Question]:
+    def create_exam_from_cart(
+        self,
+        criteria: dict[str, Any],
+        selected_ids: set[int] | None = None,
+    ) -> list[Question]:
         """
         장바구니 행 기준으로 시험 문제를 생성한다.
         각 행은 분류, 총 개수, 난이도별 직접 입력 개수를 가질 수 있다.
         """
         cart_items = self.normalize_cart_items(criteria.get("cart_items", []))
         selected_questions: list[Question] = []
-        selected_ids: set[int] = set()
+        selected_ids = selected_ids or set()
         summary_items = []
 
         for item in cart_items:
@@ -137,6 +163,52 @@ class ExamBuilderService:
         return {
             "question_types": list(self.DEFAULT_QUESTION_TYPES),
         }
+
+    def validate_exam_request(self, criteria: dict[str, Any]) -> tuple[bool, str]:
+        """Validate requested auto-extraction counts against currently available questions."""
+        selected_ids = set(self._to_id_list(criteria.get("selected_question_ids", [])))
+        validation_items = self._get_validation_items(criteria)
+
+        for item in validation_items:
+            available_count = self.count_available_questions(
+                criteria,
+                category=item.get("category"),
+                difficulty=item.get("difficulty"),
+                excluded_question_ids=selected_ids,
+            )
+            requested_count = self._to_count(item.get("count"))
+            if requested_count > available_count:
+                label_parts = [part for part in (item.get("category"), item.get("difficulty")) if part]
+                label = " / ".join(label_parts) or "현재 조건"
+                return (
+                    False,
+                    f"{label} 조건으로 추출 가능한 문제는 최대 {available_count}문항입니다. "
+                    f"요청 문항 수를 {available_count}문항 이하로 줄여주세요.",
+                )
+
+        return True, ""
+
+    def count_available_questions(
+        self,
+        criteria: dict[str, Any],
+        category: str | None = None,
+        difficulty: str | None = None,
+        excluded_question_ids: set[int] | None = None,
+    ) -> int:
+        excluded_question_ids = excluded_question_ids or set()
+        candidates = self._get_candidates(criteria, category=category, difficulty=difficulty)
+        return len(
+            [
+                question
+                for question in candidates
+                if question.question_id is None or question.question_id not in excluded_question_ids
+            ]
+        )
+
+    def get_selectable_questions(self, criteria: dict[str, Any] | None = None) -> list[Question]:
+        """Return active questions for the direct-selection dialog."""
+        criteria = criteria or {}
+        return self._get_candidates(criteria)
 
     def _select_questions_for_item(
         self,
@@ -201,32 +273,116 @@ class ExamBuilderService:
         ]
         return self._sample_questions(candidates, count, selected_ids)
 
+    def _get_selected_questions(self, criteria: dict[str, Any]) -> list[Question]:
+        questions = criteria.get("selected_questions")
+        if questions:
+            return [
+                question
+                for question in questions
+                if isinstance(question, Question) or hasattr(question, "question_id")
+            ]
+
+        question_ids = self._to_id_list(criteria.get("selected_question_ids", []))
+        selected = []
+        for question_id in question_ids:
+            question = self._read_question(question_id)
+            if question:
+                selected.append(question)
+        return selected
+
+    def _read_question(self, question_id: int) -> Question | None:
+        try:
+            return self.question_repository.read(question_id)
+        except Exception:
+            return next(
+                (question for question in self._get_sample_pool() if question.question_id == question_id),
+                None,
+            )
+
+    def _deduplicate_questions(self, questions: list[Question]) -> list[Question]:
+        deduplicated = []
+        seen_ids = set()
+        for question in questions:
+            question_id = getattr(question, "question_id", None)
+            if question_id is not None:
+                if question_id in seen_ids:
+                    continue
+                seen_ids.add(question_id)
+            deduplicated.append(question)
+        return deduplicated
+
+    def _get_validation_items(self, criteria: dict[str, Any]) -> list[dict[str, Any]]:
+        cart_items = self.normalize_cart_items(criteria.get("cart_items", []))
+        if cart_items:
+            items = []
+            for item in cart_items:
+                specified_count = 0
+                for difficulty, count in item.difficulty_counts.items():
+                    count = self._to_count(count)
+                    specified_count += count
+                    if count:
+                        items.append(
+                            {
+                                "category": item.category,
+                                "difficulty": difficulty,
+                                "count": count,
+                            }
+                        )
+
+                unspecified_count = max(item.total_count - specified_count, 0)
+                if unspecified_count:
+                    items.append(
+                        {
+                            "category": item.category,
+                            "difficulty": None,
+                            "count": unspecified_count,
+                        }
+                    )
+            return items
+
+        items = []
+        for category, count in criteria.get("category_counts", {}).items():
+            items.append({"category": category, "difficulty": None, "count": count})
+        for difficulty, count in criteria.get("difficulty_counts", {}).items():
+            items.append({"category": None, "difficulty": difficulty, "count": count})
+        if not items and self._to_count(criteria.get("total_count", criteria.get("count", 0))):
+            items.append(
+                {
+                    "category": criteria.get("category") or criteria.get("type"),
+                    "difficulty": criteria.get("difficulty"),
+                    "count": criteria.get("total_count", criteria.get("count", 0)),
+                }
+            )
+        return items
+
     def _get_candidates(
         self,
         criteria: dict[str, Any],
         category: str | None = None,
         difficulty: str | None = None,
     ) -> list[Question]:
-        if hasattr(self.question_repository, "get_questions_by_filter"):
-            candidates = self.question_repository.get_questions_by_filter(
-                category=category or criteria.get("category") or criteria.get("type"),
-                difficulty=difficulty or criteria.get("difficulty"),
-                exam_name=criteria.get("exam_name"),
-                class_name=criteria.get("class_name"),
-                sub_category=criteria.get("sub_category"),
-            )
-        else:
-            candidates = self.question_repository.read_all(active_only=True)
-            candidates = self._filter_by_category_and_difficulty(
-                candidates,
-                category=category or criteria.get("category") or criteria.get("type"),
-                difficulty=difficulty or criteria.get("difficulty"),
-            )
+        try:
+            if hasattr(self.question_repository, "get_questions_by_filter"):
+                candidates = self.question_repository.get_questions_by_filter(
+                    category=category or criteria.get("category") or criteria.get("type"),
+                    difficulty=difficulty or criteria.get("difficulty"),
+                    exam_name=criteria.get("exam_name"),
+                    class_name=criteria.get("class_name"),
+                    sub_category=criteria.get("sub_category"),
+                )
+            else:
+                candidates = self.question_repository.read_all(active_only=True)
+                candidates = self._filter_by_category_and_difficulty(
+                    candidates,
+                    category=category or criteria.get("category") or criteria.get("type"),
+                    difficulty=difficulty or criteria.get("difficulty"),
+                )
 
-        candidates = self._filter_by_common_criteria(candidates, criteria)
-
-        if candidates:
-            return candidates
+            candidates = self._filter_by_common_criteria(candidates, criteria)
+            if candidates or self._repository_has_questions():
+                return candidates
+        except Exception:
+            pass
 
         return self._filter_by_common_criteria(
             self._filter_by_category_and_difficulty(
@@ -331,20 +487,30 @@ class ExamBuilderService:
         except (TypeError, ValueError):
             return 0
 
+    def _to_id_list(self, values: Any) -> list[int]:
+        if values in (None, ""):
+            return []
+        if not isinstance(values, (list, tuple, set)):
+            values = [values]
+
+        ids = []
+        for value in values:
+            try:
+                ids.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        return ids
+
+    def _repository_has_questions(self) -> bool:
+        try:
+            return bool(self.question_repository.read_all(active_only=True))
+        except Exception:
+            return False
+
 
 class PdfExportService:
     def export_exam_pdf(self, file_path, exam_info, questions):
-        """PDF generation logic."""
-        try:
-            from reportlab.pdfgen import canvas
-            from reportlab.lib.pagesizes import A4
+        """Compatibility wrapper for older imports."""
+        from app.services.pdf_export_service import PdfExportService as ReportPdfExportService
 
-            c = canvas.Canvas(file_path, pagesize=A4)
-            c.drawString(100, 800, f"Test Title: {exam_info.get('title')}")
-            for i, question in enumerate(questions, 1):
-                c.drawString(100, 800 - (i * 30), f"{i}. {question.question_text}")
-
-            c.save()
-            return True, "저장 완료"
-        except Exception as exc:
-            return False, str(exc)
+        return ReportPdfExportService().export_exam_pdf(file_path, exam_info, questions)
