@@ -21,6 +21,7 @@ class ExamController:
 
         self._connect_view_events()
         self._initialize_filter_options()
+        self._refresh_generated_exams()
 
     def _connect_view_events(self) -> None:
         if hasattr(self.view, "auto_extract_requested"):
@@ -37,6 +38,8 @@ class ExamController:
             self.view.pdf_export_requested.connect(self.export_pdf)
         if hasattr(self.view, "preview_requested"):
             self.view.preview_requested.connect(self.preview_exam)
+        if hasattr(self.view, "exam_delete_requested"):
+            self.view.exam_delete_requested.connect(self.delete_exam)
 
         if hasattr(self.view, "generate_button"):
             self.view.generate_button.clicked.connect(self.on_generate_clicked)
@@ -152,7 +155,27 @@ class ExamController:
         self.saved_exam_id = exam_id
         self.selected_questions = list(self.view.selected_questions)
         self.view.set_selected_questions(self.selected_questions)
+        self._refresh_generated_exams()
         self._show_message("시험지가 저장되었습니다.")
+
+    def delete_exam(self, exam_id: object) -> None:
+        try:
+            target_exam_id = int(exam_id)
+        except (TypeError, ValueError):
+            self._show_error("삭제할 시험지 정보를 찾을 수 없습니다.")
+            return
+
+        try:
+            deleted = ExamRepository.delete(target_exam_id)
+        except Exception as exc:
+            self._show_error(f"시험지 삭제 중 오류가 발생했습니다: {exc}")
+            return
+
+        self._refresh_generated_exams()
+        if deleted:
+            self._show_message("시험지가 삭제되었습니다.")
+        else:
+            self._show_error("삭제할 시험지를 찾을 수 없습니다.")
 
     def export_pdf(self) -> None:
         questions = list(getattr(self.view, "selected_questions", []))
@@ -303,6 +326,30 @@ class ExamController:
     def _set_cart_data(self) -> None:
         if hasattr(self.view, "set_cart_data"):
             self.view.set_cart_data(self.cart_items)
+
+    def _refresh_generated_exams(self) -> None:
+        if not hasattr(self.view, "set_generated_exams"):
+            return
+
+        try:
+            exams = ExamRepository.read_all()
+        except Exception:
+            exams = []
+
+        self.view.set_generated_exams(
+            [
+                {
+                    "exam_id": exam.exam_id,
+                    "exam_name": exam.exam_name,
+                    "class_name": exam.target_class,
+                    "exam_date": exam.exam_date or "",
+                    "question_count": exam.total_questions,
+                    "status": "저장됨",
+                }
+                for exam in exams
+                if exam.exam_id is not None
+            ]
+        )
 
     def _get_selected_cart_index(self) -> int | None:
         if hasattr(self.view, "get_selected_cart_index"):

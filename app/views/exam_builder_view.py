@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -43,7 +44,17 @@ class ExamBuilderView(QWidget):
         self.generated_exams: list[dict[str, object]] = []
         self.selected_questions_window: SelectedQuestionListDialog | None = None
 
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        root_layout.addWidget(scroll)
+
+        content = QWidget()
+        scroll.setWidget(content)
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(28, 26, 28, 24)
         layout.setSpacing(16)
 
@@ -61,6 +72,7 @@ class ExamBuilderView(QWidget):
         layout.addWidget(self._build_selected_questions_card(), 1)
         layout.addWidget(self._build_generated_exams_card(), 1)
         layout.addWidget(self._build_output_action_card())
+        layout.addStretch()
 
         self.set_filter_options(
             {
@@ -332,6 +344,7 @@ class ExamBuilderView(QWidget):
 
     def _build_exam_info_card(self) -> QFrame:
         card = self._make_card("시험 기본 정보")
+        card.setMinimumHeight(210)
         layout = card.layout()
 
         form = QGridLayout()
@@ -367,6 +380,7 @@ class ExamBuilderView(QWidget):
 
     def _build_condition_cart_card(self) -> QFrame:
         card = self._make_card("문제 추출 조건")
+        card.setMinimumHeight(210)
         layout = card.layout()
 
         control_row = QHBoxLayout()
@@ -439,6 +453,7 @@ class ExamBuilderView(QWidget):
 
     def _build_selected_questions_card(self) -> QFrame:
         card = self._make_card("선택된 문제 목록")
+        card.setMinimumHeight(190)
         layout = card.layout()
 
         header = QHBoxLayout()
@@ -464,6 +479,7 @@ class ExamBuilderView(QWidget):
 
     def _build_generated_exams_card(self) -> QFrame:
         card = self._make_card("생성된 시험지 목록")
+        card.setMinimumHeight(170)
         layout = card.layout()
 
         self.generated_exams_table = QTableWidget(0, 7)
@@ -481,6 +497,7 @@ class ExamBuilderView(QWidget):
 
     def _build_output_action_card(self) -> QFrame:
         card = self._make_card("시험지 미리보기 / 저장")
+        card.setMinimumHeight(92)
         layout = card.layout()
 
         row = QHBoxLayout()
@@ -595,7 +612,6 @@ class ExamBuilderView(QWidget):
 
     def _delete_generated_exam(self, exam_id: object) -> None:
         self.exam_delete_requested.emit(exam_id)
-        self.set_generated_exams([exam for exam in self.generated_exams if exam.get("exam_id") != exam_id])
 
     def _make_card(self, title: str) -> QFrame:
         card = QFrame()
