@@ -8,6 +8,7 @@ from app.models.question_model import Question
 
 
 class ExamBuilderService:
+    DEFAULT_QUESTION_TYPES = ("어휘", "문법", "독해")
     DEFAULT_DIFFICULTIES = ("쉬움", "중간", "어려움")
 
     def __init__(self, question_repository) -> None:
@@ -125,6 +126,17 @@ class ExamBuilderService:
 
     def get_last_build_summary(self) -> dict[str, Any]:
         return self.last_build_summary
+
+    def get_filter_options(self) -> dict[str, list[str]]:
+        """
+        Return exam-builder filter options for the controller to inject into the View.
+
+        TODO: Replace DEFAULT_QUESTION_TYPES with Repository-provided categories when
+        category master data or question metadata lookup is connected.
+        """
+        return {
+            "question_types": list(self.DEFAULT_QUESTION_TYPES),
+        }
 
     def _select_questions_for_item(
         self,

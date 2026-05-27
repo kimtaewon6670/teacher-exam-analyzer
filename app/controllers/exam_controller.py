@@ -11,6 +11,7 @@ class ExamController:
         self.cart_items = []
 
         self._connect_view_events()
+        self._initialize_filter_options()
 
     def _connect_view_events(self) -> None:
         if hasattr(self.view, "generate_button"):
@@ -23,6 +24,18 @@ class ExamController:
             self.view.remove_cart_button.clicked.connect(self.on_remove_cart_clicked)
         if hasattr(self.view, "clear_cart_button"):
             self.view.clear_cart_button.clicked.connect(self.on_clear_cart_clicked)
+
+    def _initialize_filter_options(self) -> None:
+        """Provide initial filter choices to the View without putting data setup in the View."""
+        if not hasattr(self.view, "set_filter_options"):
+            return
+
+        if hasattr(self.builder_service, "get_filter_options"):
+            filter_options = self.builder_service.get_filter_options()
+        else:
+            filter_options = {"question_types": ["어휘", "문법", "독해"]}
+
+        self.view.set_filter_options(filter_options)
 
     def on_add_cart_clicked(self) -> None:
         """Add one builder row to the in-memory cart."""
