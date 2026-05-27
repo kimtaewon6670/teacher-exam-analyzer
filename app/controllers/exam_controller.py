@@ -53,12 +53,9 @@ class ExamController:
         if not hasattr(self.view, "set_filter_options"):
             return
 
-        if hasattr(self.builder_service, "get_filter_options"):
-            filter_options = self.builder_service.get_filter_options()
-        else:
-            filter_options = {}
-
+        filter_options = self.builder_service.get_filter_options() if hasattr(self.builder_service, "get_filter_options") else {}
         questions = QuestionRepository.read_all(active_only=True)
+
         filter_options = {
             **filter_options,
             "question_types": sorted({question.category for question in questions if question.category})
@@ -84,20 +81,6 @@ class ExamController:
             or filter_options.get("classes", ["1학년 1반", "1학년 2반", "1학년 3반"]),
         }
         self.view.set_filter_options(filter_options)
-
-    def _with_all_option(self, all_label: str, values: list[str]) -> list[str]:
-        deduped_values = [value for value in values if value and value != all_label]
-        return [all_label] + deduped_values
-
-    def _collect_tags(self, questions: list[Any]) -> list[str]:
-        return sorted(
-                {
-                    tag.strip()
-                    for question in questions
-                    for tag in (question.tags or "").split(",")
-                    if tag.strip()
-                }
-            )
 
     def auto_extract_questions(self) -> None:
         criteria = self._build_service_criteria()
@@ -247,7 +230,6 @@ class ExamController:
 
     def _build_service_criteria(self) -> dict[str, Any]:
         condition_data = self.view.get_exam_condition_data()
-        exam_data = self.view.get_exam_form_data()
         return {
             "category_counts": {
                 "어휘": int(condition_data["type_counts"].get("vocabulary", 0)),
@@ -283,6 +265,10 @@ class ExamController:
         if hasattr(self.view, "get_selected_cart_item_index"):
             return self.view.get_selected_cart_item_index()
         return None
+
+    def _with_all_option(self, all_label: str, values: list[str]) -> list[str]:
+        deduped_values = [value for value in values if value and value != all_label]
+        return [all_label] + deduped_values
 
     def _normalize_filter_value(self, value: str, empty_label: str) -> str:
         return "" if value == empty_label else value
