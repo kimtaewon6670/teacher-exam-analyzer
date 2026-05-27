@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -22,7 +23,7 @@ class ResultInputView(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("resultInputView")
-        self._answer_widgets: dict[int, QComboBox] = {}
+        self._manual_answers: dict[int, str] = {}
         self.answer_input_window: AnswerInputDialog | None = None
         self._exam_ids: list[object] = []
         self._class_ids: list[object] = []
@@ -159,26 +160,7 @@ class ResultInputView(QWidget):
         )
 
     def set_answer_items(self, question_count: int) -> None:
-        self._answer_widgets = {}
-        self.answer_table.setRowCount(question_count)
-        for row_index in range(question_count):
-            question_number = row_index + 1
-            answer_combo = QComboBox()
-            answer_combo.addItems(["", "1", "2", "3", "4"])
-            answer_combo.currentTextChanged.connect(
-                lambda text, row=row_index: self._update_answer_status(row, text)
-            )
-
-            number_item = QTableWidgetItem(str(question_number))
-            number_item.setTextAlignment(Qt.AlignCenter)
-            status_item = QTableWidgetItem("미입력")
-            status_item.setTextAlignment(Qt.AlignCenter)
-
-            self._answer_widgets[question_number] = answer_combo
-            self.answer_table.setItem(row_index, 0, number_item)
-            self.answer_table.setCellWidget(row_index, 1, answer_combo)
-            self.answer_table.setItem(row_index, 2, status_item)
-            self.answer_table.setRowHeight(row_index, 38)
+        self._manual_answers = {question_number: "" for question_number in range(1, question_count + 1)}
         if self.answer_input_window is not None:
             self.answer_input_window.set_answers(self.get_manual_answers())
 
@@ -192,17 +174,12 @@ class ResultInputView(QWidget):
         return self._get_selected_id(self._student_ids, self.student_combo.currentIndex())
 
     def get_manual_answers(self) -> dict[int, str]:
-        return {
-            question_number: answer_widget.currentText()
-            for question_number, answer_widget in self._answer_widgets.items()
-        }
+        return dict(self._manual_answers)
 
     def set_manual_answers(self, answers: dict[int, str]) -> None:
         for question_number, answer in answers.items():
-            answer_widget = self._answer_widgets.get(question_number)
-            if answer_widget is not None:
-                index = answer_widget.findText(str(answer))
-                answer_widget.setCurrentIndex(index if index >= 0 else 0)
+            if question_number in self._manual_answers:
+                self._manual_answers[question_number] = str(answer).strip()
 
     def set_csv_file_name(self, file_name: str) -> None:
         self.csv_file_name_label.setText(file_name or "선택된 CSV 파일이 없습니다.")
@@ -233,8 +210,8 @@ class ResultInputView(QWidget):
         self.exam_combo.setCurrentIndex(0 if self.exam_combo.count() else -1)
         self.class_combo.setCurrentIndex(0 if self.class_combo.count() else -1)
         self.student_combo.setCurrentIndex(0 if self.student_combo.count() else -1)
-        for answer_widget in self._answer_widgets.values():
-            answer_widget.setCurrentIndex(0)
+        for question_number in self._manual_answers:
+            self._manual_answers[question_number] = ""
         self.set_csv_file_name("")
         self.set_csv_preview_data([])
         self.show_validation_message("입력값 검증 결과가 여기에 표시됩니다.")
@@ -295,20 +272,16 @@ class ResultInputView(QWidget):
         layout = card.layout()
 
         header = QHBoxLayout()
+        description = QLabel("학생의 단답형 답안은 큰 입력 창에서 한 번에 입력합니다.")
+        description.setObjectName("csvGuide")
+        header.addWidget(description)
         header.addStretch()
-        open_answer_button = QPushButton("크게 입력")
-        open_answer_button.setFixedWidth(100)
+        open_answer_button = QPushButton("답안 입력")
+        open_answer_button.setObjectName("primaryButton")
+        open_answer_button.setFixedWidth(120)
         open_answer_button.clicked.connect(self._open_answer_input_window)
         header.addWidget(open_answer_button)
         layout.addLayout(header)
-
-        self.answer_table = QTableWidget(0, 3)
-        self.answer_table.setHorizontalHeaderLabels(["문항 번호", "입력 답안", "입력 상태"])
-        self.answer_table.verticalHeader().setVisible(False)
-        self.answer_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.answer_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.answer_table.setSelectionMode(QTableWidget.NoSelection)
-        layout.addWidget(self.answer_table)
         return card
 
     def _build_csv_card(self) -> QFrame:
@@ -386,11 +359,6 @@ class ResultInputView(QWidget):
         layout.addWidget(field)
         return wrapper
 
-    def _update_answer_status(self, row: int, answer: str) -> None:
-        item = self.answer_table.item(row, 2)
-        if item is not None:
-            item.setText("입력 완료" if answer else "미입력")
-
     def _open_answer_input_window(self) -> None:
         self.answer_input_window = AnswerInputDialog(self.get_manual_answers(), self)
         if self.answer_input_window.exec() == QDialog.Accepted:
@@ -416,7 +384,7 @@ class AnswerInputDialog(QDialog):
         title.setObjectName("dialogTitle")
         layout.addWidget(title)
 
-        self.answer_widgets: dict[int, QComboBox] = {}
+        self.answer_widgets: dict[int, QLineEdit] = {}
         self.answer_table = QTableWidget(0, 3)
         self.answer_table.setHorizontalHeaderLabels(["문항 번호", "입력 답안", "입력 상태"])
         self.answer_table.verticalHeader().setVisible(False)
@@ -445,7 +413,7 @@ class AnswerInputDialog(QDialog):
                 font-size: 24px;
                 font-weight: 800;
             }
-            QComboBox {
+            QLineEdit {
                 background: white;
                 border: 1px solid #d8e0ea;
                 border-radius: 6px;
@@ -477,28 +445,27 @@ class AnswerInputDialog(QDialog):
         question_numbers = sorted(answers.keys())
         self.answer_table.setRowCount(len(question_numbers))
         for row_index, question_number in enumerate(question_numbers):
-            answer_combo = QComboBox()
-            answer_combo.addItems(["", "1", "2", "3", "4"])
-            answer_combo.currentTextChanged.connect(
+            answer_input = QLineEdit()
+            answer_input.setPlaceholderText("단답형 답안 입력")
+            answer_input.setText(str(answers.get(question_number, "")))
+            answer_input.textChanged.connect(
                 lambda text, row=row_index: self._update_answer_status(row, text)
             )
-            index = answer_combo.findText(str(answers.get(question_number, "")))
-            answer_combo.setCurrentIndex(index if index >= 0 else 0)
 
             number_item = QTableWidgetItem(str(question_number))
             number_item.setTextAlignment(Qt.AlignCenter)
-            status_item = QTableWidgetItem("입력 완료" if answer_combo.currentText() else "미입력")
+            status_item = QTableWidgetItem("입력 완료" if answer_input.text().strip() else "미입력")
             status_item.setTextAlignment(Qt.AlignCenter)
 
-            self.answer_widgets[question_number] = answer_combo
+            self.answer_widgets[question_number] = answer_input
             self.answer_table.setItem(row_index, 0, number_item)
-            self.answer_table.setCellWidget(row_index, 1, answer_combo)
+            self.answer_table.setCellWidget(row_index, 1, answer_input)
             self.answer_table.setItem(row_index, 2, status_item)
             self.answer_table.setRowHeight(row_index, 40)
 
     def get_answers(self) -> dict[int, str]:
         return {
-            question_number: answer_widget.currentText()
+            question_number: answer_widget.text().strip()
             for question_number, answer_widget in self.answer_widgets.items()
         }
 
