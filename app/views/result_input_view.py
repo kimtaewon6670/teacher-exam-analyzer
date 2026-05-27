@@ -87,7 +87,7 @@ class ResultInputView(QWidget):
                 border: 1px solid #d8e0ea;
                 border-radius: 6px;
                 color: #28384c;
-                min-height: 30px;
+                min-height: 38px;
                 padding: 8px 10px;
             }
             QPushButton {
@@ -226,6 +226,7 @@ class ResultInputView(QWidget):
 
     def _build_exam_select_card(self) -> QFrame:
         card = self._make_card("시험 선택")
+        card.setMinimumHeight(170)
         layout = card.layout()
         form = QGridLayout()
         form.setHorizontalSpacing(12)

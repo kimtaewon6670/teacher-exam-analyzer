@@ -125,10 +125,10 @@ class ExamBuilderView(QWidget):
                 padding: 8px 10px;
             }
             QLineEdit, QComboBox, QDateEdit, QSpinBox {
-                min-height: 30px;
+                min-height: 38px;
             }
             QTextEdit {
-                min-height: 58px;
+                min-height: 78px;
             }
             QPushButton {
                 background: white;
@@ -344,7 +344,7 @@ class ExamBuilderView(QWidget):
 
     def _build_exam_info_card(self) -> QFrame:
         card = self._make_card("시험 기본 정보")
-        card.setMinimumHeight(210)
+        card.setMinimumHeight(290)
         layout = card.layout()
 
         form = QGridLayout()
@@ -380,7 +380,7 @@ class ExamBuilderView(QWidget):
 
     def _build_condition_cart_card(self) -> QFrame:
         card = self._make_card("문제 추출 조건")
-        card.setMinimumHeight(210)
+        card.setMinimumHeight(290)
         layout = card.layout()
 
         control_row = QHBoxLayout()
@@ -497,11 +497,12 @@ class ExamBuilderView(QWidget):
 
     def _build_output_action_card(self) -> QFrame:
         card = self._make_card("시험지 미리보기 / 저장")
-        card.setMinimumHeight(92)
+        card.setMinimumHeight(110)
         layout = card.layout()
 
         row = QHBoxLayout()
         row.setSpacing(10)
+        row.setContentsMargins(0, 0, 0, 6)
         preview_button = QPushButton("시험지 미리보기")
         pdf_button = QPushButton("PDF 출력")
         save_button = QPushButton("시험지 저장")
