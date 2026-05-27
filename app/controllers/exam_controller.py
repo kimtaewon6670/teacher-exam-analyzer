@@ -411,9 +411,11 @@ class ExamController:
         if count_input is None or not hasattr(count_input, "setMaximum"):
             return
 
-        criteria = self._get_exam_criteria()
-        category = criteria.get("category") or criteria.get("type")
-        difficulty = criteria.get("difficulty")
+        criteria = self._build_service_criteria() if hasattr(self.view, "get_exam_condition_data") else self._get_exam_criteria()
+        category = self._get_combo_text("question_type_combo") or criteria.get("category") or criteria.get("type")
+        difficulty = self._get_combo_text("difficulty_combo") or criteria.get("difficulty")
+        criteria["sub_category"] = self._normalize_filter_value(str(criteria.get("sub_category", "")), "전체 분류")
+        criteria["tag"] = self._normalize_filter_value(str(criteria.get("tag", "")), "전체 태그")
         excluded_ids = set(self._get_selected_question_ids())
         max_count = self.builder_service.count_available_questions(
             criteria,
@@ -422,3 +424,9 @@ class ExamController:
             excluded_question_ids=excluded_ids,
         )
         count_input.setMaximum(max(max_count, 0))
+
+    def _get_combo_text(self, combo_name: str) -> str:
+        combo = getattr(self.view, combo_name, None)
+        if combo is None or not hasattr(combo, "currentText"):
+            return ""
+        return str(combo.currentText()).strip()
