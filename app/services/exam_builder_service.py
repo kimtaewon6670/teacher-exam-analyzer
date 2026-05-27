@@ -271,11 +271,22 @@ class ExamBuilderService:
     def _get_selected_questions(self, criteria: dict[str, Any]) -> list[Question]:
         questions = criteria.get("selected_questions")
         if questions:
-            return [
-                question
-                for question in questions
-                if isinstance(question, Question) or hasattr(question, "question_id")
-            ]
+            selected = []
+            for question in questions:
+                if isinstance(question, Question):
+                    selected.append(question)
+                    continue
+                if hasattr(question, "question_id"):
+                    selected.append(question)
+                    continue
+
+                question_id = self._get_question_id_from_value(question)
+                if question_id is not None:
+                    loaded_question = self._read_question(question_id)
+                    if loaded_question:
+                        selected.append(loaded_question)
+            if selected:
+                return selected
 
         question_ids = self._to_id_list(criteria.get("selected_question_ids", []))
         selected = []
@@ -480,11 +491,24 @@ class ExamBuilderService:
 
         ids = []
         for value in values:
-            try:
-                ids.append(int(value))
-            except (TypeError, ValueError):
-                continue
+            question_id = self._get_question_id_from_value(value)
+            if question_id is not None:
+                ids.append(question_id)
         return ids
+
+    def _get_question_id_from_value(self, value: Any) -> int | None:
+        if isinstance(value, dict):
+            value = value.get(
+                "question_id",
+                value.get("id", value.get("question_no", value.get("no"))),
+            )
+        else:
+            value = getattr(value, "question_id", value)
+
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
 
     def _repository_has_questions(self) -> bool:
         try:
