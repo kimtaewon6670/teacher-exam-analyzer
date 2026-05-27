@@ -12,8 +12,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.controllers.exam_controller import ExamController
+from app.controllers.analysis_controller import AnalysisController
+from app.controllers.question_controller import QuestionController
+from app.controllers.result_controller import ResultController
+from app.controllers.student_controller import StudentController
+from app.repositories.question_repository import QuestionRepository
+from app.services.exam_builder_service import ExamBuilderService
+from app.services.pdf_export_service import PdfExportService
 from app.views.dashboard_view import DashboardView
+from app.views.analysis_view import AnalysisView
+from app.views.exam_builder_view import ExamBuilderView
 from app.views.question_bank_view import QuestionBankView
+from app.views.result_input_view import ResultInputView
 from app.views.student_manage_view import StudentManageView
 
 
@@ -34,6 +45,13 @@ class MainWindow(QMainWindow):
 
         self.sidebar = Sidebar()
         self.pages = QStackedWidget()
+
+        self.student_controller = StudentController()
+        self.question_controller = None
+        self.exam_controller = None
+        self.result_controller = None
+        self.analysis_controller = None
+
         self.pages.addWidget(DashboardView())
 
         for name in [
@@ -49,12 +67,39 @@ class MainWindow(QMainWindow):
         student_placeholder = self.pages.widget(1)
         self.pages.removeWidget(student_placeholder)
         student_placeholder.deleteLater()
-        self.pages.insertWidget(1, StudentManageView())
+        self.pages.insertWidget(1, StudentManageView(self.student_controller))
 
         question_placeholder = self.pages.widget(2)
         self.pages.removeWidget(question_placeholder)
         question_placeholder.deleteLater()
-        self.pages.insertWidget(2, QuestionBankView())
+        question_view = QuestionBankView()
+        self.question_controller = QuestionController(question_view)
+        self.pages.insertWidget(2, question_view)
+
+        exam_placeholder = self.pages.widget(3)
+        self.pages.removeWidget(exam_placeholder)
+        exam_placeholder.deleteLater()
+        exam_view = ExamBuilderView()
+        self.exam_controller = ExamController(
+            exam_view,
+            ExamBuilderService(QuestionRepository),
+            PdfExportService(),
+        )
+        self.pages.insertWidget(3, exam_view)
+
+        result_input_placeholder = self.pages.widget(4)
+        self.pages.removeWidget(result_input_placeholder)
+        result_input_placeholder.deleteLater()
+        result_input_view = ResultInputView()
+        self.result_controller = ResultController(result_input_view)
+        self.pages.insertWidget(4, result_input_view)
+
+        analysis_placeholder = self.pages.widget(5)
+        self.pages.removeWidget(analysis_placeholder)
+        analysis_placeholder.deleteLater()
+        analysis_view = AnalysisView()
+        self.analysis_controller = AnalysisController(analysis_view)
+        self.pages.insertWidget(5, analysis_view)
 
         layout.addWidget(self.sidebar)
         layout.addWidget(self.pages, 1)

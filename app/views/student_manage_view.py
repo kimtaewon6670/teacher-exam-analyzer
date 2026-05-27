@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+from typing import Any
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
     QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -17,8 +23,9 @@ from PySide6.QtWidgets import (
 
 
 class StudentManageView(QWidget):
-    def __init__(self) -> None:
+    def __init__(self, student_controller: Any) -> None:
         super().__init__()
+        self.student_controller = student_controller
         self.setObjectName("studentManageView")
 
         layout = QVBoxLayout(self)
@@ -33,15 +40,7 @@ class StudentManageView(QWidget):
         layout.addWidget(self._build_search_card())
         layout.addWidget(self._build_table_card(), 1)
 
-        self.set_students_data(
-            [
-                {"name": "김민수", "student_id": "2024001", "class_name": "1학년 1반", "status": "활성"},
-                {"name": "이서연", "student_id": "2024002", "class_name": "1학년 1반", "status": "활성"},
-                {"name": "박지훈", "student_id": "2024003", "class_name": "1학년 2반", "status": "활성"},
-                {"name": "최유진", "student_id": "2024004", "class_name": "1학년 2반", "status": "비활성"},
-                {"name": "정하랑", "student_id": "2024005", "class_name": "1학년 3반", "status": "활성"},
-            ]
-        )
+        self._refresh_students()
 
         self.setStyleSheet(
             """
@@ -142,13 +141,148 @@ class StudentManageView(QWidget):
             ]
 
             for column_index, value in enumerate(values):
-                item = QTableWidgetItem(value)
+                item = QTableWidgetItem(str(value))
                 item.setTextAlignment(Qt.AlignCenter)
                 self.students_table.setItem(row_index, column_index, item)
 
-            self.students_table.setCellWidget(row_index, 4, self._make_table_button_cell("수정", "editButton"))
-            self.students_table.setCellWidget(row_index, 5, self._make_table_button_cell("비활성화", "disableButton"))
+            student_db_id = student.get("id")
+            is_active = student.get("status") == "활성"
+            self.students_table.setCellWidget(
+                row_index,
+                4,
+                self._make_table_button_cell(
+                    "수정",
+                    "editButton",
+                    lambda checked=False, student=student: self._on_edit_clicked(student),
+                ),
+            )
+            self.students_table.setCellWidget(
+                row_index,
+                5,
+                self._make_table_button_cell(
+                    "비활성화" if is_active else "활성화",
+                    "disableButton",
+                    lambda checked=False, student_id=student_db_id, is_active=is_active: self._on_status_change_clicked(
+                        student_id,
+                        is_active,
+                    ),
+                ),
+            )
             self.students_table.setRowHeight(row_index, 38)
+
+    def _refresh_students(self) -> None:
+        keyword = self.search_input.text().strip()
+        class_name = self.class_filter.currentText()
+        if class_name == "전체 반":
+            class_name = ""
+
+        self.set_students_data(self.student_controller.search_students(keyword, class_name))
+
+    def _on_register_clicked(self) -> None:
+        name = self.name_input.text().strip()
+        student_number = self.student_id_input.text().strip()
+        class_name = self.class_input.text().strip()
+
+        if not name or not student_number or not class_name:
+            QMessageBox.warning(self, "입력 확인", "이름, 학번, 반 정보를 모두 입력해주세요.")
+            return
+
+        try:
+            self.student_controller.create_student(name, student_number, class_name)
+        except Exception as exc:
+            QMessageBox.warning(self, "등록 실패", f"학생 등록 중 오류가 발생했습니다.\n{exc}")
+            return
+
+        self.name_input.clear()
+        self.student_id_input.clear()
+        self.class_input.clear()
+        self._refresh_students()
+
+    def _on_edit_clicked(self, student: dict[str, str]) -> None:
+        edited_student = self._show_edit_dialog(student)
+        if edited_student is None:
+            return
+
+        try:
+            updated = self.student_controller.update_student(
+                int(student["id"]),
+                edited_student["name"],
+                edited_student["student_id"],
+                edited_student["class_name"],
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "수정 실패", f"학생 정보 수정 중 오류가 발생했습니다.\n{exc}")
+            return
+
+        if not updated:
+            QMessageBox.warning(self, "수정 실패", "수정할 학생을 찾을 수 없습니다.")
+            return
+
+        self._refresh_students()
+
+    def _on_status_change_clicked(self, student_id: int | None, is_active: bool) -> None:
+        if student_id is None:
+            QMessageBox.warning(self, "상태 변경 실패", "상태를 변경할 학생을 찾을 수 없습니다.")
+            return
+
+        action_text = "비활성화" if is_active else "활성화"
+        answer = QMessageBox.question(
+            self,
+            f"{action_text} 확인",
+            f"선택한 학생을 {action_text}하시겠습니까?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+
+        try:
+            changed = (
+                self.student_controller.deactivate_student(int(student_id))
+                if is_active
+                else self.student_controller.activate_student(int(student_id))
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, f"{action_text} 실패", f"학생 {action_text} 중 오류가 발생했습니다.\n{exc}")
+            return
+
+        if not changed:
+            QMessageBox.warning(self, f"{action_text} 실패", f"{action_text}할 학생을 찾을 수 없습니다.")
+            return
+
+        self._refresh_students()
+
+    def _show_edit_dialog(self, student: dict[str, str]) -> dict[str, str] | None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("학생 정보 수정")
+
+        layout = QFormLayout(dialog)
+        name_input = QLineEdit(student.get("name", ""))
+        student_number_input = QLineEdit(student.get("student_id", ""))
+        class_name_input = QLineEdit(student.get("class_name", ""))
+
+        layout.addRow("학생 이름", name_input)
+        layout.addRow("학번", student_number_input)
+        layout.addRow("반 정보", class_name_input)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.Accepted:
+            return None
+
+        edited_student = {
+            "name": name_input.text().strip(),
+            "student_id": student_number_input.text().strip(),
+            "class_name": class_name_input.text().strip(),
+        }
+        if not edited_student["name"] or not edited_student["student_id"] or not edited_student["class_name"]:
+            QMessageBox.warning(self, "입력 확인", "이름, 학번, 반 정보를 모두 입력해주세요.")
+            return None
+
+        return edited_student
 
     def _build_register_card(self) -> QFrame:
         card = QFrame()
@@ -172,6 +306,7 @@ class StudentManageView(QWidget):
         register_button = QPushButton("학생 등록")
         register_button.setObjectName("primaryButton")
         register_button.setFixedWidth(130)
+        register_button.clicked.connect(self._on_register_clicked)
         fields.addWidget(register_button, 0, Qt.AlignBottom)
 
         layout.addLayout(fields)
@@ -192,10 +327,12 @@ class StudentManageView(QWidget):
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("이름 또는 학번 검색")
+        self.search_input.textChanged.connect(self._refresh_students)
         layout.addWidget(self.search_input, 1)
 
         self.class_filter = QComboBox()
         self.class_filter.addItems(["전체 반", "1학년 1반", "1학년 2반", "1학년 3반"])
+        self.class_filter.currentTextChanged.connect(self._refresh_students)
         self.class_filter.setFixedWidth(160)
         layout.addWidget(self.class_filter)
 
@@ -214,7 +351,7 @@ class StudentManageView(QWidget):
         layout.addWidget(title)
 
         self.students_table = QTableWidget(0, 6)
-        self.students_table.setHorizontalHeaderLabels(["이름", "학번", "반", "상태", "수정", "비활성화"])
+        self.students_table.setHorizontalHeaderLabels(["이름", "학번", "반", "상태", "수정", "상태 변경"])
         self.students_table.verticalHeader().setVisible(False)
         self.students_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.students_table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -242,18 +379,21 @@ class StudentManageView(QWidget):
 
         return input_box
 
-    def _make_table_button_cell(self, text: str, object_name: str) -> QWidget:
+    def _make_table_button_cell(self, text: str, object_name: str, on_clicked=None, enabled: bool = True) -> QWidget:
         cell = QWidget()
         layout = QHBoxLayout(cell)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addStretch()
-        layout.addWidget(self._make_table_button(text, object_name))
+        layout.addWidget(self._make_table_button(text, object_name, on_clicked, enabled))
         layout.addStretch()
         return cell
 
-    def _make_table_button(self, text: str, object_name: str) -> QPushButton:
+    def _make_table_button(self, text: str, object_name: str, on_clicked=None, enabled: bool = True) -> QPushButton:
         button = QPushButton(text)
         button.setObjectName(object_name)
         button.setFixedSize(78, 26)
+        button.setEnabled(enabled)
+        if on_clicked is not None:
+            button.clicked.connect(on_clicked)
         return button
