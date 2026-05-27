@@ -20,7 +20,7 @@ class ExamController:
         self.saved_exam_id: int | None = None
 
         self._connect_view_events()
-        self._load_filter_options()
+        self._initialize_filter_options()
 
     def _connect_view_events(self) -> None:
         if hasattr(self.view, "auto_extract_requested"):
@@ -49,27 +49,55 @@ class ExamController:
         if hasattr(self.view, "clear_cart_button"):
             self.view.clear_cart_button.clicked.connect(self.on_clear_cart_clicked)
 
-    def _load_filter_options(self) -> None:
+    def _initialize_filter_options(self) -> None:
         if not hasattr(self.view, "set_filter_options"):
             return
 
+        if hasattr(self.builder_service, "get_filter_options"):
+            filter_options = self.builder_service.get_filter_options()
+        else:
+            filter_options = {}
+
         questions = QuestionRepository.read_all(active_only=True)
-        self.view.set_filter_options(
-            {
-                "question_types": sorted({question.category for question in questions if question.category}),
-                "sub_categories": sorted({question.sub_category for question in questions if question.sub_category}),
-                "tags": sorted(
+        filter_options = {
+            **filter_options,
+            "question_types": sorted({question.category for question in questions if question.category})
+            or filter_options.get("question_types", ["어휘", "문법", "독해"]),
+            "sub_categories": self._with_all_option(
+                "전체 분류",
+                sorted({question.sub_category for question in questions if question.sub_category})
+                or filter_options.get("sub_categories", []),
+            ),
+            "tags": self._with_all_option(
+                "전체 태그",
+                sorted(
                     {
                         tag.strip()
                         for question in questions
                         for tag in (question.tags or "").split(",")
                         if tag.strip()
                     }
-                ),
-                "classes": sorted({question.class_name for question in questions if question.class_name})
-                or ["1학년 1반", "1학년 2반", "1학년 3반"],
-            }
-        )
+                )
+                or filter_options.get("tags", []),
+            ),
+            "classes": sorted({question.class_name for question in questions if question.class_name})
+            or filter_options.get("classes", ["1학년 1반", "1학년 2반", "1학년 3반"]),
+        }
+        self.view.set_filter_options(filter_options)
+
+    def _with_all_option(self, all_label: str, values: list[str]) -> list[str]:
+        deduped_values = [value for value in values if value and value != all_label]
+        return [all_label] + deduped_values
+
+    def _collect_tags(self, questions: list[Any]) -> list[str]:
+        return sorted(
+                {
+                    tag.strip()
+                    for question in questions
+                    for tag in (question.tags or "").split(",")
+                    if tag.strip()
+                }
+            )
 
     def auto_extract_questions(self) -> None:
         criteria = self._build_service_criteria()
@@ -231,10 +259,9 @@ class ExamController:
                 "보통": int(condition_data["difficulty_counts"].get("normal", 0)),
                 "어려움": int(condition_data["difficulty_counts"].get("hard", 0)),
             },
+            "cart_items": condition_data.get("cart_items", []),
             "sub_category": self._normalize_filter_value(str(condition_data.get("sub_category", "")), "전체 분류"),
             "tag": self._normalize_filter_value(str(condition_data.get("tag", "")), "전체 태그"),
-            "class_name": exam_data.get("class_name", ""),
-            "exam_name": exam_data.get("exam_name", ""),
             "total_count": int(condition_data.get("total_count", 0)),
         }
 
