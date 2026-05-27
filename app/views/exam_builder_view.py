@@ -286,7 +286,11 @@ class ExamBuilderView(QWidget):
         QMessageBox.warning(self, "오류", message)
 
     def set_filter_options(self, options: dict[str, list[str]]) -> None:
-        self._set_combo_options(self.question_type_combo, options.get("question_types", ["어휘", "문법", "독해"]))
+        question_types = list(options.get("question_types") or [])
+        for default_type in ["어휘", "문법", "독해"]:
+            if default_type not in question_types:
+                question_types.append(default_type)
+        self._set_combo_options(self.question_type_combo, question_types)
         self._set_combo_options(self.sub_category_combo, options.get("sub_categories", ["전체 분류"]))
         self._set_combo_options(self.tag_combo, options.get("tags", ["전체 태그"]))
         self._set_combo_options(self.class_combo, options.get("classes", ["1학년 1반"]))
