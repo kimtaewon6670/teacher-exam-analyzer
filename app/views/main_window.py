@@ -21,6 +21,7 @@ from app.services.pdf_export_service import PdfExportService
 from app.views.dashboard_view import DashboardView
 from app.views.exam_builder_view import ExamBuilderView
 from app.views.question_bank_view import QuestionBankView
+from app.views.result_input_view import ResultInputView
 from app.views.student_manage_view import StudentManageView
 
 
@@ -80,6 +81,11 @@ class MainWindow(QMainWindow):
             PdfExportService(),
         )
         self.pages.insertWidget(3, exam_view)
+
+        result_input_placeholder = self.pages.widget(4)
+        self.pages.removeWidget(result_input_placeholder)
+        result_input_placeholder.deleteLater()
+        self.pages.insertWidget(4, ResultInputView())
 
         layout.addWidget(self.sidebar)
         layout.addWidget(self.pages, 1)
