@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -45,8 +46,6 @@ class ResultInputView(QWidget):
         layout.addWidget(self._build_csv_card(), 1)
         layout.addWidget(self._build_validation_card())
         layout.addWidget(self._build_action_bar())
-
-        self._load_sample_data()
 
         self.setStyleSheet(
             """
@@ -184,6 +183,15 @@ class ResultInputView(QWidget):
     def set_csv_file_name(self, file_name: str) -> None:
         self.csv_file_name_label.setText(file_name or "선택된 CSV 파일이 없습니다.")
 
+    def get_csv_file_path(self) -> str:
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "CSV 파일 선택",
+            "",
+            "CSV Files (*.csv);;All Files (*)",
+        )
+        return file_path
+
     def set_csv_preview_data(self, rows: list[dict[str, object]]) -> None:
         if not rows:
             self.csv_preview_table.setRowCount(0)
@@ -215,37 +223,6 @@ class ResultInputView(QWidget):
         self.set_csv_file_name("")
         self.set_csv_preview_data([])
         self.show_validation_message("입력값 검증 결과가 여기에 표시됩니다.")
-
-    def _load_sample_data(self) -> None:
-        self.set_exam_options(
-            [
-                {"id": 1, "name": "2024년 1학기 중간고사"},
-                {"id": 2, "name": "2024년 1학기 기말고사"},
-            ]
-        )
-        self.set_class_options(
-            [
-                {"id": "1-1", "name": "1학년 1반"},
-                {"id": "1-2", "name": "1학년 2반"},
-                {"id": "1-3", "name": "1학년 3반"},
-            ]
-        )
-        self.set_student_options(
-            [
-                {"id": 1, "name": "김민수", "student_id": "2024001"},
-                {"id": 2, "name": "이서연", "student_id": "2024002"},
-                {"id": 3, "name": "박지훈", "student_id": "2024003"},
-            ]
-        )
-        self.set_exam_summary({"question_count": 10, "subject": "영어", "exam_date": "2024-05-20"})
-        self.set_answer_items(10)
-        self.set_csv_file_name("")
-        self.set_csv_preview_data(
-            [
-                {"student_id": "2024001", "q1": "1", "q2": "3", "q3": "2"},
-                {"student_id": "2024002", "q1": "2", "q2": "2", "q3": "1"},
-            ]
-        )
 
     def _build_exam_select_card(self) -> QFrame:
         card = self._make_card("시험 선택")

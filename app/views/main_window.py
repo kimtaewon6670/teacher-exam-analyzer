@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from app.controllers.exam_controller import ExamController
 from app.controllers.question_controller import QuestionController
+from app.controllers.result_controller import ResultController
 from app.controllers.student_controller import StudentController
 from app.repositories.question_repository import QuestionRepository
 from app.services.exam_builder_service import ExamBuilderService
@@ -47,6 +48,7 @@ class MainWindow(QMainWindow):
         self.student_controller = StudentController()
         self.question_controller = None
         self.exam_controller = None
+        self.result_controller = None
 
         self.pages.addWidget(DashboardView())
 
@@ -86,7 +88,9 @@ class MainWindow(QMainWindow):
         result_input_placeholder = self.pages.widget(4)
         self.pages.removeWidget(result_input_placeholder)
         result_input_placeholder.deleteLater()
-        self.pages.insertWidget(4, ResultInputView())
+        result_input_view = ResultInputView()
+        self.result_controller = ResultController(result_input_view)
+        self.pages.insertWidget(4, result_input_view)
 
         analysis_placeholder = self.pages.widget(5)
         self.pages.removeWidget(analysis_placeholder)

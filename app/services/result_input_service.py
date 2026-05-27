@@ -12,6 +12,7 @@ from app.repositories.exam_repository import ExamRepository
 from app.repositories.question_repository import QuestionRepository
 from app.repositories.result_repository import ResultRepository
 from app.repositories.student_repository import StudentRepository
+from app.services.grading_service import GradingService
 from app.utils.answer_normalizer import AnswerNormalizer
 from app.utils.constants import CORRECT, WRONG
 
@@ -19,21 +20,7 @@ from app.utils.constants import CORRECT, WRONG
 class ResultInputService:
     """Core logic for result input, validation, answer comparison, and persistence."""
 
-    SAMPLE_EXAMS = [
-        {"id": 1, "name": "2024년 1학기 중간고사"},
-        {"id": 2, "name": "2024년 1학기 기말고사"},
-    ]
-    SAMPLE_CLASSES = [
-        {"id": "1-1", "name": "1학년 1반"},
-        {"id": "1-2", "name": "1학년 2반"},
-        {"id": "1-3", "name": "1학년 3반"},
-    ]
-    SAMPLE_STUDENTS = [
-        {"id": 1, "name": "김민서", "student_id": "2024001", "class_id": "1-1"},
-        {"id": 2, "name": "이서준", "student_id": "2024002", "class_id": "1-1"},
-        {"id": 3, "name": "박지우", "student_id": "2024003", "class_id": "1-2"},
-    ]
-    SAMPLE_SUMMARY = {"question_count": 10, "subject": "영어", "exam_date": "2024-05-20"}
+    EMPTY_SUMMARY = {"question_count": 0, "subject": "-", "exam_date": "-"}
 
     def __init__(
         self,
@@ -65,7 +52,7 @@ class ResultInputService:
 
     def get_exam_summary(self, exam_id: Any) -> dict[str, Any]:
         if exam_id is None:
-            return dict(self.SAMPLE_SUMMARY)
+            return dict(self.EMPTY_SUMMARY)
 
         try:
             exam = self.exam_repository.read(exam_id)
@@ -79,11 +66,11 @@ class ResultInputService:
         except Exception:
             pass
 
-        return dict(self.SAMPLE_SUMMARY)
+        return dict(self.EMPTY_SUMMARY)
 
     def get_question_count(self, exam_id: Any) -> int:
         summary = self.get_exam_summary(exam_id)
-        return self._to_int(summary.get("question_count"), self.SAMPLE_SUMMARY["question_count"])
+        return self._to_int(summary.get("question_count"), 0)
 
     def get_students_by_class(self, class_id: Any) -> list[dict[str, Any]]:
         if class_id in (None, ""):
@@ -96,11 +83,7 @@ class ResultInputService:
         except Exception:
             pass
 
-        return [
-            student
-            for student in self.SAMPLE_STUDENTS
-            if student.get("class_id") == class_id or class_id in (None, "")
-        ]
+        return []
 
     def validate_input(
         self,
@@ -114,6 +97,9 @@ class ResultInputService:
             return False, "학생을 선택해주세요."
 
         question_count = self.get_question_count(exam_id)
+        if question_count <= 0:
+            return False, "선택한 시험에 저장된 문항이 없습니다."
+
         normalized_answers = self._normalize_answer_map(answers)
         if not normalized_answers:
             return False, "입력된 답안이 없습니다."
@@ -143,6 +129,11 @@ class ResultInputService:
 
         normalized_answers = self._normalize_answer_map(answers)
         question_specs = self._get_question_specs(exam_id)
+        if not question_specs:
+            return {
+                "success": False,
+                "message": "선택한 시험의 문항 정보를 찾을 수 없습니다.",
+            }
 
         correct_count = 0
         answer_records: list[AnswerRecord] = []
@@ -198,8 +189,19 @@ class ResultInputService:
                     "result": result,
                     "details": detail_rows,
                 }
-            result.result_id = self.result_repository.create(result)
-            self.answer_record_repository.create_batch(answer_records)
+            question_id_answers = {
+                int(spec["question_id"]): normalized_answers.get(question_number, "")
+                for question_number, spec in enumerate(question_specs, start=1)
+            }
+            try:
+                result = GradingService.grade_exam(int(exam_id), int(student_id), question_id_answers)
+            except Exception as exc:
+                return {
+                    "success": False,
+                    "message": f"채점 결과 저장 중 오류가 발생했습니다: {exc}",
+                    "result": result,
+                    "details": detail_rows,
+                }
             saved = True
 
         message_prefix = "채점 및 저장 완료" if saved else "채점 완료"
@@ -243,8 +245,7 @@ class ResultInputService:
         except Exception:
             pass
 
-        # TODO: Repository 연결이 안정화되면 화면 확인용 샘플데이터 제거.
-        return list(self.SAMPLE_EXAMS)
+        return []
 
     def _get_student_options(self) -> list[dict[str, Any]]:
         try:
@@ -254,8 +255,7 @@ class ResultInputService:
         except Exception:
             pass
 
-        # TODO: Repository 연결이 안정화되면 화면 확인용 샘플데이터 제거.
-        return list(self.SAMPLE_STUDENTS)
+        return []
 
     def _get_class_options(
         self,
@@ -279,8 +279,7 @@ class ResultInputService:
         if class_ids:
             return [{"id": class_id, "name": str(class_id)} for class_id in class_ids]
 
-        # TODO: 별도 Class Repository가 추가되면 여기에서 반 목록을 조회하도록 교체.
-        return list(self.SAMPLE_CLASSES)
+        return []
 
     def _get_question_specs(self, exam_id: Any) -> list[dict[str, Any]]:
         try:
@@ -303,19 +302,7 @@ class ResultInputService:
         except Exception:
             pass
 
-        return self._get_sample_question_specs(self.get_question_count(exam_id))
-
-    def _get_sample_question_specs(self, question_count: int) -> list[dict[str, Any]]:
-        # TODO: 실제 시험 문항 Repository 연결 후 제거할 화면 확인용 샘플 정답.
-        return [
-            {
-                "question_id": question_number,
-                "correct_answer": str(((question_number - 1) % 4) + 1),
-                "acceptable_answers": None,
-                "is_sample": True,
-            }
-            for question_number in range(1, question_count + 1)
-        ]
+        return []
 
     def _is_sample_question_specs(self, question_specs: list[dict[str, Any]]) -> bool:
         return any(spec.get("is_sample") for spec in question_specs)

@@ -58,19 +58,13 @@ class ResultController:
         self._show_message(message, is_valid)
 
     def on_save_clicked(self) -> None:
-        is_valid, message = self.result_service.validate_input(
+        result = self.result_service.grade_answers(
             self._get_selected_exam_id(),
             self._get_selected_student_id(),
             self._get_manual_answers(),
+            save_result=True,
         )
-        if not is_valid:
-            self._show_message(message, False)
-            return
-
-        self._show_message(
-            "입력값 검증 완료. 저장은 자동 채점 실행 시 결과와 함께 처리됩니다.",
-            True,
-        )
+        self._show_message(result["message"], bool(result.get("success")))
 
     def on_grade_clicked(self) -> None:
         result = self.result_service.grade_answers(
