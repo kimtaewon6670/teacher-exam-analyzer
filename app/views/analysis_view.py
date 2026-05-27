@@ -46,7 +46,6 @@ class AnalysisView(QWidget):
 
         layout.addWidget(self._build_filter_card())
         layout.addLayout(self._build_summary_cards())
-        layout.addWidget(self._build_class_analysis_card())
         layout.addWidget(self._build_question_analysis_card())
 
         middle_row = QHBoxLayout()
@@ -175,53 +174,39 @@ class AnalysisView(QWidget):
             "correct_rate": "전체 정답률",
             "wrong_rate": "전체 오답률",
             "weak_type": "가장 취약한 문제 유형",
-            "weak_difficulty": "가장 취약한 난이도",
         }
         for key, title in label_map.items():
             value_label = self._summary_value_labels.get(title)
             if value_label is not None:
                 value_label.setText(str(summary.get(key, "-")))
 
-        self.class_average_label.setText(str(summary.get("average_score", "-")))
-        self.class_correct_rate_label.setText(str(summary.get("correct_rate", "-")))
-        self.class_wrong_rate_label.setText(str(summary.get("wrong_rate", "-")))
-        self.class_interpretation_label.setText(str(summary.get("interpretation", "")))
-
     def set_question_analysis_data(self, rows: list[dict[str, object]]) -> None:
         self._fill_table(
             self.question_table,
             rows,
-            ["question_number", "content", "type", "sub_category", "difficulty", "correct_rate", "wrong_rate", "is_weak"],
+            ["question_number", "content", "type", "sub_category", "difficulty", "correct_rate", "wrong_rate"],
         )
 
     def set_type_analysis_data(self, rows: list[dict[str, object]]) -> None:
-        self._fill_table(self.type_table, rows, ["type", "correct_rate", "wrong_rate", "note"])
+        self._fill_table(self.type_table, rows, ["type", "correct_rate", "wrong_rate"])
         weakest = min(rows, key=lambda row: float(row.get("correct_rate", 100)), default={})
         self.type_graph_label.setText(f"그래프 placeholder\n가장 낮은 유형: {weakest.get('type', '-')}")
 
     def set_sub_category_analysis_data(self, rows: list[dict[str, object]]) -> None:
-        self._fill_table(self.sub_category_table, rows, ["sub_category", "correct_rate", "wrong_rate", "note"])
+        self._fill_table(self.sub_category_table, rows, ["sub_category", "correct_rate", "wrong_rate"])
         weakest = min(rows, key=lambda row: float(row.get("correct_rate", 100)), default={})
         self.sub_category_graph_label.setText(f"그래프 placeholder\n취약 세부 분류: {weakest.get('sub_category', '-')}")
 
     def set_difficulty_analysis_data(self, rows: list[dict[str, object]]) -> None:
-        self._fill_table(self.difficulty_table, rows, ["difficulty", "correct_rate", "wrong_rate", "achievement_gap"])
-        self.difficulty_graph_label.setText("그래프 placeholder\n난이도별 성취 차이를 표시합니다.")
+        self._fill_table(self.difficulty_table, rows, ["difficulty", "correct_rate", "wrong_rate"])
+        self.difficulty_graph_label.setText("그래프 placeholder\n난이도별 정답률을 표시합니다.")
 
     def set_weakness_summary(self, data: dict[str, object]) -> None:
-        self.weak_type_label.setText(str(data.get("weak_type", "-")))
-        self.weak_sub_category_label.setText(str(data.get("weak_sub_category", "-")))
-        self.weak_difficulty_label.setText(str(data.get("weak_difficulty", "-")))
-        self.guidance_label.setText(str(data.get("guidance", "-")))
         self.feedback_label.setText(str(data.get("feedback", "-")))
 
     def clear_analysis(self) -> None:
         for value_label in self._summary_value_labels.values():
             value_label.setText("-")
-        self.class_average_label.setText("-")
-        self.class_correct_rate_label.setText("-")
-        self.class_wrong_rate_label.setText("-")
-        self.class_interpretation_label.setText("")
         for table in [self.question_table, self.type_table, self.sub_category_table, self.difficulty_table]:
             table.setRowCount(0)
         self.set_weakness_summary({})
@@ -253,7 +238,6 @@ class AnalysisView(QWidget):
                 "correct_rate": "72.45%",
                 "wrong_rate": "27.55%",
                 "weak_type": "문법",
-                "weak_difficulty": "어려움",
                 "interpretation": "현재 반은 문법 유형과 어려움 난이도에서 낮은 정답률을 보입니다.",
             }
         )
@@ -287,10 +271,6 @@ class AnalysisView(QWidget):
         )
         self.set_weakness_summary(
             {
-                "weak_type": "문법",
-                "weak_sub_category": "시제",
-                "weak_difficulty": "어려움",
-                "guidance": "문법 개념 복습과 난이도 높은 문항의 단계별 풀이 지도가 필요합니다.",
                 "feedback": "시제 문제를 짧은 문장 단위로 다시 연습한 뒤 독해 지문에 적용해 보세요.",
             }
         )
@@ -321,7 +301,7 @@ class AnalysisView(QWidget):
         grid = QGridLayout()
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(12)
-        titles = ["응시 학생 수", "반 전체 평균 점수", "전체 정답률", "전체 오답률", "가장 취약한 문제 유형", "가장 취약한 난이도"]
+        titles = ["응시 학생 수", "반 전체 평균 점수", "전체 정답률", "전체 오답률", "가장 취약한 문제 유형"]
         for index, title in enumerate(titles):
             card = QFrame()
             card.setObjectName("card")
@@ -337,28 +317,11 @@ class AnalysisView(QWidget):
             grid.addWidget(card, index // 3, index % 3)
         return grid
 
-    def _build_class_analysis_card(self) -> QFrame:
-        card = self._make_card("반 전체 분석")
-        layout = card.layout()
-        row = QHBoxLayout()
-        self.class_average_label = self._make_metric_inline("반 전체 평균 점수")
-        self.class_correct_rate_label = self._make_metric_inline("전체 정답률")
-        self.class_wrong_rate_label = self._make_metric_inline("전체 오답률")
-        row.addWidget(self.class_average_label)
-        row.addWidget(self.class_correct_rate_label)
-        row.addWidget(self.class_wrong_rate_label)
-        row.addStretch()
-        layout.addLayout(row)
-        self.class_interpretation_label = QLabel("")
-        self.class_interpretation_label.setObjectName("interpretationLabel")
-        layout.addWidget(self.class_interpretation_label)
-        return card
-
     def _build_question_analysis_card(self) -> QFrame:
         card = self._make_card("문항별 정답률/오답률 분석")
         layout = card.layout()
-        self.question_table = QTableWidget(0, 8)
-        self.question_table.setHorizontalHeaderLabels(["문항 번호", "문제 내용", "문제 유형", "세부 분류", "난이도", "정답률", "오답률", "취약 여부"])
+        self.question_table = QTableWidget(0, 7)
+        self.question_table.setHorizontalHeaderLabels(["문항 번호", "문제 내용", "문제 유형", "세부 분류", "난이도", "정답률", "오답률"])
         self._setup_table(self.question_table)
         self.question_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
         self.question_table.setColumnWidth(1, 360)
@@ -368,8 +331,8 @@ class AnalysisView(QWidget):
     def _build_type_analysis_card(self) -> QFrame:
         card = self._make_card("문제 유형별 정답률 분석")
         layout = card.layout()
-        self.type_table = QTableWidget(0, 4)
-        self.type_table.setHorizontalHeaderLabels(["유형", "정답률", "오답률", "강조"])
+        self.type_table = QTableWidget(0, 3)
+        self.type_table.setHorizontalHeaderLabels(["유형", "정답률", "오답률"])
         self._setup_table(self.type_table)
         self.type_graph_label = self._make_graph_placeholder()
         layout.addWidget(self.type_table)
@@ -379,8 +342,8 @@ class AnalysisView(QWidget):
     def _build_sub_category_analysis_card(self) -> QFrame:
         card = self._make_card("세부 분류별 정답률 분석")
         layout = card.layout()
-        self.sub_category_table = QTableWidget(0, 4)
-        self.sub_category_table.setHorizontalHeaderLabels(["세부 분류", "정답률", "오답률", "강조"])
+        self.sub_category_table = QTableWidget(0, 3)
+        self.sub_category_table.setHorizontalHeaderLabels(["세부 분류", "정답률", "오답률"])
         self._setup_table(self.sub_category_table)
         self.sub_category_graph_label = self._make_graph_placeholder()
         layout.addWidget(self.sub_category_table)
@@ -390,8 +353,8 @@ class AnalysisView(QWidget):
     def _build_difficulty_analysis_card(self) -> QFrame:
         card = self._make_card("난이도별 정답률 분석")
         layout = card.layout()
-        self.difficulty_table = QTableWidget(0, 4)
-        self.difficulty_table.setHorizontalHeaderLabels(["난이도", "정답률", "오답률", "성취 차이"])
+        self.difficulty_table = QTableWidget(0, 3)
+        self.difficulty_table.setHorizontalHeaderLabels(["난이도", "정답률", "오답률"])
         self._setup_table(self.difficulty_table)
         self.difficulty_graph_label = self._make_graph_placeholder()
         layout.addWidget(self.difficulty_table)
@@ -402,19 +365,10 @@ class AnalysisView(QWidget):
         card = self._make_card("반 전체 취약 유형 확인")
         layout = card.layout()
         grid = QGridLayout()
-        self.weak_type_label = self._make_metric_inline("취약 유형명")
-        self.weak_sub_category_label = self._make_metric_inline("취약 세부 분류명")
-        self.weak_difficulty_label = self._make_metric_inline("취약 난이도")
-        self.guidance_label = QLabel("-")
         self.feedback_label = QLabel("-")
-        for label in [self.guidance_label, self.feedback_label]:
-            label.setObjectName("weaknessLabel")
-            label.setWordWrap(True)
-        grid.addWidget(self.weak_type_label, 0, 0)
-        grid.addWidget(self.weak_sub_category_label, 0, 1)
-        grid.addWidget(self.weak_difficulty_label, 0, 2)
-        grid.addWidget(self._make_labeled_widget("보충 지도 필요 문구", self.guidance_label), 1, 0, 1, 3)
-        grid.addWidget(self._make_labeled_widget("추천 피드백 문구", self.feedback_label), 2, 0, 1, 3)
+        self.feedback_label.setObjectName("weaknessLabel")
+        self.feedback_label.setWordWrap(True)
+        grid.addWidget(self._make_labeled_widget("추천 피드백 문구", self.feedback_label), 0, 0, 1, 3)
         layout.addLayout(grid)
         return card
 
