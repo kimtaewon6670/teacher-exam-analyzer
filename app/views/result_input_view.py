@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -30,6 +31,8 @@ class ResultInputView(QWidget):
         self._exam_ids: list[object] = []
         self._class_ids: list[object] = []
         self._student_ids: list[object] = []
+        self._grading_student_rows: list[dict[str, object]] = []
+        self._grading_question_rows: list[dict[str, object]] = []
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -223,6 +226,15 @@ class ResultInputView(QWidget):
                 self.csv_preview_table.setItem(row_index, column_index, item)
             self.csv_preview_table.setRowHeight(row_index, 34)
 
+    def set_grading_result_data(
+        self,
+        student_rows: list[dict[str, object]],
+        question_rows: list[dict[str, object]],
+    ) -> None:
+        self._grading_student_rows = student_rows
+        self._grading_question_rows = question_rows
+        self.result_view_button.setEnabled(bool(student_rows or question_rows))
+
     def show_validation_message(self, message: str, is_success: bool = False) -> None:
         self.validation_message_label.setText(message)
         color = "#16803c" if is_success else "#b54708"
@@ -321,13 +333,18 @@ class ResultInputView(QWidget):
         self.validate_button = QPushButton("입력값 검증")
         self.save_button = QPushButton("답안 저장")
         self.grade_button = QPushButton("자동 채점 실행")
+        self.result_view_button = QPushButton("결과 보기")
         self.reset_button = QPushButton("초기화")
         self.grade_button.setObjectName("primaryButton")
+        self.result_view_button.setEnabled(False)
+        self.grade_button.clicked.connect(self._show_sample_grading_results)
+        self.result_view_button.clicked.connect(self.show_grading_result_window)
 
         layout.addStretch()
         layout.addWidget(self.validate_button)
         layout.addWidget(self.save_button)
         layout.addWidget(self.grade_button)
+        layout.addWidget(self.result_view_button)
         layout.addWidget(self.reset_button)
         return card
 
@@ -357,6 +374,28 @@ class ResultInputView(QWidget):
         self.answer_input_window = AnswerInputDialog(self.get_manual_answers(), self)
         if self.answer_input_window.exec() == QDialog.Accepted:
             self.set_manual_answers(self.answer_input_window.get_answers())
+
+    def _show_sample_grading_results(self) -> None:
+        self.set_grading_result_data(
+            [
+                {"student_name": "김민수", "student_id": "2024001", "score": "80", "correct_count": "8", "wrong_count": "2", "question_results": "1 맞음 / 2 틀림 / 3 맞음"},
+                {"student_name": "이서연", "student_id": "2024002", "score": "70", "correct_count": "7", "wrong_count": "3", "question_results": "1 맞음 / 2 틀림 / 3 틀림"},
+            ],
+            [
+                {"question_number": 1, "student_name": "김민수", "correct_answer": "apple", "student_answer": "apple", "result": "맞음"},
+                {"question_number": 2, "student_name": "김민수", "correct_answer": "go", "student_answer": "went", "result": "틀림"},
+                {"question_number": 3, "student_name": "김민수", "correct_answer": "because", "student_answer": "because", "result": "맞음"},
+                {"question_number": 1, "student_name": "이서연", "correct_answer": "apple", "student_answer": "apple", "result": "맞음"},
+                {"question_number": 2, "student_name": "이서연", "correct_answer": "go", "student_answer": "goes", "result": "틀림"},
+                {"question_number": 3, "student_name": "이서연", "correct_answer": "because", "student_answer": "becaus", "result": "틀림"},
+            ],
+        )
+        self.show_grading_result_window()
+
+    def show_grading_result_window(self) -> None:
+        dialog = GradingResultDialog(self._grading_student_rows, self._grading_question_rows, self)
+        dialog.showMaximized()
+        dialog.exec()
 
     def _get_selected_id(self, ids: list[object], index: int) -> object | None:
         if 0 <= index < len(ids):
@@ -467,3 +506,95 @@ class AnswerInputDialog(QDialog):
         item = self.answer_table.item(row, 2)
         if item is not None:
             item.setText("입력 완료" if answer else "미입력")
+
+
+class GradingResultDialog(QDialog):
+    def __init__(
+        self,
+        student_rows: list[dict[str, object]],
+        question_rows: list[dict[str, object]],
+        parent: ResultInputView | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("채점 결과 보기")
+        self.resize(1200, 760)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 22, 24, 24)
+        layout.setSpacing(14)
+
+        title = QLabel("채점 결과 보기")
+        title.setObjectName("dialogTitle")
+        layout.addWidget(title)
+
+        tabs = QTabWidget()
+        self.student_table = QTableWidget(0, 6)
+        self.question_table = QTableWidget(0, 5)
+        self.student_table.setHorizontalHeaderLabels(["학생", "학번", "점수", "정답 수", "오답 수", "문항별 채점"])
+        self.question_table.setHorizontalHeaderLabels(["문항 번호", "학생", "기준 정답", "입력 답안", "결과"])
+        self._setup_table(self.student_table)
+        self._setup_table(self.question_table)
+        tabs.addTab(self.student_table, "학생별 결과")
+        tabs.addTab(self.question_table, "문항별 결과")
+        layout.addWidget(tabs, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(self.reject)
+        buttons.accepted.connect(self.accept)
+        layout.addWidget(buttons)
+
+        self._fill_table(
+            self.student_table,
+            student_rows,
+            ["student_name", "student_id", "score", "correct_count", "wrong_count", "question_results"],
+        )
+        self._fill_table(
+            self.question_table,
+            question_rows,
+            ["question_number", "student_name", "correct_answer", "student_answer", "result"],
+        )
+        self.setStyleSheet(
+            """
+            QDialog {
+                background: #f4f7fb;
+                color: #172033;
+                font-family: "Malgun Gothic", "Segoe UI", Arial;
+            }
+            #dialogTitle {
+                color: #18263a;
+                font-size: 24px;
+                font-weight: 800;
+            }
+            QTableWidget {
+                background: white;
+                border: 1px solid #dfe6ef;
+                border-radius: 6px;
+                color: #233348;
+                gridline-color: #e6ecf3;
+            }
+            QHeaderView::section {
+                background: #f7f9fc;
+                border: 0;
+                border-right: 1px solid #e2e8f0;
+                border-bottom: 1px solid #e2e8f0;
+                color: #2a3a50;
+                font-weight: 800;
+                padding: 9px;
+            }
+            """
+        )
+
+    def _setup_table(self, table: QTableWidget) -> None:
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setSelectionMode(QTableWidget.NoSelection)
+
+    def _fill_table(self, table: QTableWidget, rows: list[dict[str, object]], keys: list[str]) -> None:
+        table.setRowCount(len(rows))
+        for row_index, row in enumerate(rows):
+            for column_index, key in enumerate(keys):
+                item = QTableWidgetItem(str(row.get(key, "")))
+                item.setTextAlignment(Qt.AlignCenter)
+                table.setItem(row_index, column_index, item)
+            table.setRowHeight(row_index, 38)
