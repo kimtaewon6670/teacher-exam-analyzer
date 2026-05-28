@@ -34,6 +34,10 @@ class ExamBuilderView(QWidget):
     pdf_export_requested = Signal()
     save_exam_requested = Signal()
     question_exclude_requested = Signal(object)
+    auto_question_exclude_requested = Signal(object)
+    manual_question_exclude_requested = Signal(object)
+    auto_selection_clear_requested = Signal()
+    manual_selection_clear_requested = Signal()
     exam_delete_requested = Signal(object)
 
     def __init__(self) -> None:
@@ -277,6 +281,64 @@ class ExamBuilderView(QWidget):
         file_path, _ = QFileDialog.getSaveFileName(self, "PDF 저장", "", "PDF Files (*.pdf)")
         return file_path
 
+    def show_exam_preview(self, exam_data: dict[str, object], questions: list[dict[str, object]]) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("시험지 미리보기")
+        dialog.resize(900, 760)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 22, 24, 24)
+        layout.setSpacing(14)
+
+        title = QLabel(str(exam_data.get("exam_name") or "시험지"))
+        title.setObjectName("dialogTitle")
+        layout.addWidget(title)
+
+        meta = QLabel(
+            f"대상 반: {exam_data.get('class_name', '-')}    "
+            f"시험 일자: {exam_data.get('exam_date', '-')}    "
+            f"문항 수: {len(questions)}"
+        )
+        meta.setObjectName("fieldLabel")
+        layout.addWidget(meta)
+
+        preview_text = QTextEdit()
+        preview_text.setReadOnly(True)
+        preview_text.setPlainText(self._build_exam_preview_text(questions))
+        layout.addWidget(preview_text, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(dialog.reject)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+
+        dialog.setStyleSheet(
+            """
+            QDialog {
+                background: #f4f7fb;
+                color: #172033;
+                font-family: "Malgun Gothic", "Segoe UI", Arial;
+            }
+            #dialogTitle {
+                color: #18263a;
+                font-size: 24px;
+                font-weight: 800;
+            }
+            #fieldLabel {
+                color: #53657a;
+                font-size: 13px;
+            }
+            QTextEdit {
+                background: white;
+                border: 1px solid #d8e0ea;
+                border-radius: 6px;
+                color: #233348;
+                padding: 14px;
+            }
+            """
+        )
+        dialog.exec()
+
     def select_questions_from_list(self, questions: list[dict[str, object]]) -> list[dict[str, object]]:
         dialog = QDialog(self)
         dialog.setWindowTitle("문제 직접 선택")
@@ -450,7 +512,7 @@ class ExamBuilderView(QWidget):
             "자동 추출",
             self._handle_auto_extract_clicked,
             "초기화",
-            lambda: self.set_auto_extracted_questions([]),
+            self._clear_auto_extracted_questions,
             lambda: self._open_question_source_window("자동 추출 문제", self.auto_extracted_questions),
         )
         manual_card, self.manual_selected_table = self._build_question_source_card(
@@ -458,7 +520,7 @@ class ExamBuilderView(QWidget):
             "문제 선택",
             self._handle_manual_select_clicked,
             "초기화",
-            lambda: self.set_manual_selected_questions([]),
+            self._clear_manual_selected_questions,
             lambda: self._open_question_source_window("직접 선택한 문제", self.manual_selected_questions),
         )
         list_row.addWidget(auto_card, 1)
@@ -547,7 +609,7 @@ class ExamBuilderView(QWidget):
 
     def _build_selected_questions_card(self) -> QFrame:
         card = self._make_card("선택된 문제 목록")
-        card.setMinimumHeight(150)
+        card.setMinimumHeight(190)
         layout = card.layout()
 
         header = QHBoxLayout()
@@ -573,7 +635,7 @@ class ExamBuilderView(QWidget):
 
     def _build_generated_exams_card(self) -> QFrame:
         card = self._make_card("생성된 시험지 목록")
-        card.setMinimumHeight(145)
+        card.setMinimumHeight(170)
         layout = card.layout()
 
         self.generated_exams_table = QTableWidget(0, 7)
@@ -664,56 +726,29 @@ class ExamBuilderView(QWidget):
 
     def _handle_auto_extract_clicked(self) -> None:
         self.auto_extract_requested.emit()
-        if not self.auto_extracted_questions:
-            self.set_auto_extracted_questions(
-                [
-                    {
-                        "question_id": 201,
-                        "content": "자동 추출된 어휘 문제",
-                        "type": "어휘",
-                        "sub_category": "동의어",
-                        "difficulty": "쉬움",
-                        "answer": "important",
-                        "tags": "auto",
-                    },
-                    {
-                        "question_id": 202,
-                        "content": "자동 추출된 문법 문제",
-                        "type": "문법",
-                        "sub_category": "시제",
-                        "difficulty": "보통",
-                        "answer": "has gone",
-                        "tags": "auto",
-                    },
-                ]
-            )
 
     def _handle_manual_select_clicked(self) -> None:
         self.manual_select_requested.emit()
-        if not self.manual_selected_questions:
-            self.set_manual_selected_questions(
-                [
-                    {
-                        "question_id": 301,
-                        "content": "직접 선택한 독해 문제",
-                        "type": "독해",
-                        "sub_category": "주제 찾기",
-                        "difficulty": "어려움",
-                        "answer": "environmental protection",
-                        "tags": "manual",
-                    }
-                ]
-            )
 
     def _combine_question_sources(self) -> None:
         self.set_selected_questions(self.auto_extracted_questions + self.manual_selected_questions)
 
+    def _clear_auto_extracted_questions(self) -> None:
+        self.auto_selection_clear_requested.emit()
+        self.set_auto_extracted_questions([])
+
+    def _clear_manual_selected_questions(self) -> None:
+        self.manual_selection_clear_requested.emit()
+        self.set_manual_selected_questions([])
+
     def _remove_source_question(self, source: str, question_id: object) -> None:
         if source == "auto":
+            self.auto_question_exclude_requested.emit(question_id)
             self.set_auto_extracted_questions(
                 [question for question in self.auto_extracted_questions if question.get("question_id") != question_id]
             )
         elif source == "manual":
+            self.manual_question_exclude_requested.emit(question_id)
             self.set_manual_selected_questions(
                 [question for question in self.manual_selected_questions if question.get("question_id") != question_id]
             )
@@ -797,6 +832,17 @@ class ExamBuilderView(QWidget):
 
     def _delete_generated_exam(self, exam_id: object) -> None:
         self.exam_delete_requested.emit(exam_id)
+
+    def _build_exam_preview_text(self, questions: list[dict[str, object]]) -> str:
+        lines = []
+        for index, question in enumerate(questions, start=1):
+            content = str(question.get("content") or question.get("question_text") or "")
+            answer = str(question.get("answer") or question.get("answer_text") or "")
+            lines.append(f"{index}. {content}")
+            if answer:
+                lines.append(f"   정답: {answer}")
+            lines.append("")
+        return "\n".join(lines).strip()
 
     def _make_card(self, title: str) -> QFrame:
         card = QFrame()
