@@ -451,6 +451,7 @@ class ExamBuilderView(QWidget):
             self._handle_auto_extract_clicked,
             "초기화",
             lambda: self.set_auto_extracted_questions([]),
+            lambda: self._open_question_source_window("자동 추출 문제", self.auto_extracted_questions),
         )
         manual_card, self.manual_selected_table = self._build_question_source_card(
             "직접 선택한 문제",
@@ -458,6 +459,7 @@ class ExamBuilderView(QWidget):
             self._handle_manual_select_clicked,
             "초기화",
             lambda: self.set_manual_selected_questions([]),
+            lambda: self._open_question_source_window("직접 선택한 문제", self.manual_selected_questions),
         )
         list_row.addWidget(auto_card, 1)
         list_row.addWidget(manual_card, 1)
@@ -480,7 +482,15 @@ class ExamBuilderView(QWidget):
         layout.addWidget(action_card)
         return workspace
 
-    def _build_question_source_card(self, title: str, primary_text: str, primary_handler, clear_text: str, clear_handler):
+    def _build_question_source_card(
+        self,
+        title: str,
+        primary_text: str,
+        primary_handler,
+        clear_text: str,
+        clear_handler,
+        full_view_handler,
+    ):
         card = self._make_card(title)
         card.setMinimumHeight(250)
         layout = card.layout()
@@ -490,10 +500,13 @@ class ExamBuilderView(QWidget):
         primary_button.setObjectName("primaryButton")
         clear_button = QPushButton(clear_text)
         clear_button.setObjectName("dangerButton")
+        full_view_button = QPushButton("전체 보기")
         primary_button.clicked.connect(primary_handler)
         clear_button.clicked.connect(clear_handler)
+        full_view_button.clicked.connect(full_view_handler)
         button_row.addWidget(primary_button)
         button_row.addWidget(clear_button)
+        button_row.addWidget(full_view_button)
         button_row.addStretch()
         layout.addLayout(button_row)
 
@@ -769,6 +782,11 @@ class ExamBuilderView(QWidget):
 
     def _open_selected_questions_window(self) -> None:
         self.selected_questions_window = SelectedQuestionListDialog(self.selected_questions, self)
+        self.selected_questions_window.showMaximized()
+
+    def _open_question_source_window(self, title: str, questions: list[dict[str, object]]) -> None:
+        self.selected_questions_window = SelectedQuestionListDialog(questions, self)
+        self.selected_questions_window.setWindowTitle(title)
         self.selected_questions_window.showMaximized()
 
     def _exclude_question(self, question_id: object) -> None:

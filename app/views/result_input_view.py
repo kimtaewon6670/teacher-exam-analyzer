@@ -87,8 +87,8 @@ class ResultInputView(QWidget):
                 border: 1px solid #d8e0ea;
                 border-radius: 6px;
                 color: #28384c;
-                min-height: 38px;
-                padding: 8px 10px;
+                min-height: 44px;
+                padding: 10px 12px;
             }
             QPushButton {
                 background: white;
@@ -226,15 +226,17 @@ class ResultInputView(QWidget):
 
     def _build_exam_select_card(self) -> QFrame:
         card = self._make_card("시험 선택")
-        card.setMinimumHeight(170)
+        card.setMinimumHeight(230)
         layout = card.layout()
         form = QGridLayout()
         form.setHorizontalSpacing(12)
-        form.setVerticalSpacing(10)
+        form.setVerticalSpacing(18)
 
         self.exam_combo = QComboBox()
         self.class_combo = QComboBox()
         self.student_combo = QComboBox()
+        for combo in [self.exam_combo, self.class_combo, self.student_combo]:
+            combo.setMinimumHeight(44)
         self.exam_summary_label = QLabel("문항 수: -    과목/영역: -    시험일: -")
         self.exam_summary_label.setObjectName("examSummary")
 
