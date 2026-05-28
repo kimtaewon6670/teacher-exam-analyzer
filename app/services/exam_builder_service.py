@@ -20,28 +20,12 @@ class ExamBuilderService:
         시험 생성 공통 진입점.
         cart_items가 있으면 장바구니 방식으로, 없으면 기존 category_counts/difficulty_counts 방식으로 생성한다.
         """
-        selected_questions = self._get_selected_questions(criteria)
-        selected_ids = {
-            question.question_id for question in selected_questions if question.question_id is not None
-        }
+        selected_ids = set(self._to_id_list(criteria.get("selected_question_ids", [])))
 
         if criteria.get("cart_items"):
-            auto_questions = self.create_exam_from_cart(criteria, selected_ids=selected_ids)
-        else:
-            auto_questions = self.create_exam_from_counts(criteria, selected_ids=selected_ids)
+            return self.create_exam_from_cart(criteria, selected_ids=selected_ids)
 
-        combined_questions = self._deduplicate_questions([*selected_questions, *auto_questions])
-        if selected_questions:
-            self.last_build_summary["manual_selected_count"] = len(selected_questions)
-            self.last_build_summary["selected_count"] = len(combined_questions)
-            self.last_build_summary["requested_count"] = (
-                self.last_build_summary.get("requested_count", 0) + len(selected_questions)
-            )
-            self.last_build_summary["shortage"] = max(
-                self.last_build_summary.get("requested_count", 0) - len(combined_questions),
-                0,
-            )
-        return combined_questions
+        return self.create_exam_from_counts(criteria, selected_ids=selected_ids)
 
     def create_exam_from_counts(
         self,
@@ -52,9 +36,13 @@ class ExamBuilderService:
         selected_questions: list[Question] = []
         selected_ids = selected_ids or set()
         summary_items = []
+        has_count_condition = False
 
         for category, count in criteria.get("category_counts", {}).items():
             category_count = self._to_count(count)
+            if category_count <= 0:
+                continue
+            has_count_condition = True
             category_candidates = [
                 question
                 for question in candidates
@@ -66,6 +54,9 @@ class ExamBuilderService:
 
         for difficulty, count in criteria.get("difficulty_counts", {}).items():
             difficulty_count = self._to_count(count)
+            if difficulty_count <= 0:
+                continue
+            has_count_condition = True
             difficulty_candidates = [
                 question
                 for question in candidates
@@ -76,7 +67,11 @@ class ExamBuilderService:
             summary_items.append(self._build_summary_item(difficulty, difficulty_count, len(selected), {}))
 
         total_count = self._to_count(criteria.get("total_count", criteria.get("count", 0)))
-        if total_count and len(selected_questions) < total_count:
+        has_filter_condition = any(
+            criteria.get(key)
+            for key in ("category", "type", "difficulty", "sub_category", "tag", "exam_name", "class_name")
+        )
+        if total_count and len(selected_questions) < total_count and (has_count_condition or has_filter_condition):
             remaining_candidates = [
                 question for question in candidates if question.question_id not in selected_ids
             ]

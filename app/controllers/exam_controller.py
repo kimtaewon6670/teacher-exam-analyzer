@@ -14,11 +14,10 @@ class ExamController:
         self.view = view
         self.builder_service = builder_service
         self.pdf_service = pdf_service
-        self.current_questions: list[Any] = []
-        self.selected_questions: list[dict[str, object]] = []
+        self.current_questions: list[dict[str, Any]] = []
+        self.selected_questions: list[dict[str, Any]] = []
         self.auto_extracted_questions: list[dict[str, Any]] = []
         self.manual_selected_questions: list[dict[str, Any]] = []
-        self.cart_items: list[dict[str, Any]] = []
         self.saved_exam_id: int | None = None
 
         self._connect_view_events()
@@ -31,7 +30,7 @@ class ExamController:
         if hasattr(self.view, "manual_select_requested"):
             self.view.manual_select_requested.connect(self.manual_select_questions)
         if hasattr(self.view, "selection_clear_requested"):
-            self.view.selection_clear_requested.connect(self.clear_selection)
+            self.view.selection_clear_requested.connect(self.clear_manual_selected_questions)
         if hasattr(self.view, "auto_selection_clear_requested"):
             self.view.auto_selection_clear_requested.connect(self.clear_auto_extracted_questions)
         if hasattr(self.view, "manual_selection_clear_requested"):
@@ -51,30 +50,17 @@ class ExamController:
         if hasattr(self.view, "exam_delete_requested"):
             self.view.exam_delete_requested.connect(self.delete_exam)
 
-        if hasattr(self.view, "generate_button"):
-            self.view.generate_button.clicked.connect(self.on_generate_clicked)
-        if hasattr(self.view, "export_button"):
-            self.view.export_button.clicked.connect(self.on_export_clicked)
-        if hasattr(self.view, "add_cart_button"):
-            self.view.add_cart_button.clicked.connect(self.on_add_cart_clicked)
-        if hasattr(self.view, "remove_cart_button"):
-            self.view.remove_cart_button.clicked.connect(self.on_remove_cart_clicked)
-        if hasattr(self.view, "clear_cart_button"):
-            self.view.clear_cart_button.clicked.connect(self.on_clear_cart_clicked)
         for button_name in ("auto_clear_button", "clear_auto_button", "auto_selection_clear_button"):
             button = getattr(self.view, button_name, None)
             if button is not None and hasattr(button, "clicked"):
                 button.clicked.connect(self.clear_auto_extracted_questions)
+
         for button_name in ("manual_clear_button", "clear_manual_button", "manual_selection_clear_button"):
             button = getattr(self.view, button_name, None)
             if button is not None and hasattr(button, "clicked"):
                 button.clicked.connect(self.clear_manual_selected_questions)
-        for button_name in (
-            "preview_button",
-            "exam_preview_button",
-            "preview_exam_button",
-            "preview_btn",
-        ):
+
+        for button_name in ("preview_button", "exam_preview_button", "preview_exam_button", "preview_btn"):
             button = getattr(self.view, button_name, None)
             if button is not None and hasattr(button, "clicked"):
                 button.clicked.connect(self.preview_exam)
@@ -85,7 +71,11 @@ class ExamController:
         if not hasattr(self.view, "set_filter_options"):
             return
 
-        filter_options = self.builder_service.get_filter_options() if hasattr(self.builder_service, "get_filter_options") else {}
+        filter_options = (
+            self.builder_service.get_filter_options()
+            if hasattr(self.builder_service, "get_filter_options")
+            else {}
+        )
         questions = QuestionRepository.read_all(active_only=True)
 
         filter_options = {
@@ -116,12 +106,23 @@ class ExamController:
 
     def auto_extract_questions(self) -> None:
         criteria = self._build_service_criteria()
-        if criteria["total_count"] <= 0:
+        requested_count = self._get_requested_auto_count(criteria)
+        if requested_count <= 0:
             self._show_error("추출할 문항 수를 입력해주세요.")
             return
 
+        if self._to_count(criteria.get("total_count")) <= 0:
+            criteria["total_count"] = requested_count
         criteria["selected_question_ids"] = self._get_manual_question_ids()
         criteria["selected_questions"] = []
+
+        if hasattr(self.builder_service, "validate_exam_request"):
+            is_valid, message = self.builder_service.validate_exam_request(criteria)
+            if not is_valid:
+                self._show_error(message)
+                self._update_count_limit()
+                return
+
         self._set_auto_extracted_questions(self.builder_service.create_random_exam(criteria))
 
         if hasattr(self.view, "set_build_summary_data"):
@@ -135,15 +136,9 @@ class ExamController:
         if not selected_questions:
             return
 
-        existing_ids = set(self._get_selected_question_ids())
-        for question in selected_questions:
-            question_id = self._get_question_id(question)
-            if question_id not in existing_ids:
-                self.manual_selected_questions.append(self._to_view_question(question))
-                if question_id is not None:
-                    existing_ids.add(question_id)
-
-        self._sync_selected_questions_to_view()
+        self._set_manual_selected_questions(
+            self._merge_selected_questions(self.manual_selected_questions, selected_questions)
+        )
 
     def clear_selection(self) -> None:
         self._clear_selected_questions()
@@ -208,9 +203,8 @@ class ExamController:
         self._show_message("시험지가 저장되었습니다.")
 
     def delete_exam(self, exam_id: object) -> None:
-        try:
-            target_exam_id = int(exam_id)
-        except (TypeError, ValueError):
+        target_exam_id = self._normalize_question_id(exam_id)
+        if target_exam_id is None:
             self._show_error("삭제할 시험지 정보를 찾을 수 없습니다.")
             return
 
@@ -241,131 +235,79 @@ class ExamController:
         success, message = self.pdf_service.export_exam_pdf(save_path, self.view.get_exam_form_data(), questions)
         self._show_export_result(success, message)
 
-    def on_add_cart_clicked(self) -> None:
-        if hasattr(self.view, "get_exam_cart_item_data"):
-            raw_item = self.view.get_exam_cart_item_data()
-        else:
-            raw_item = self.view.get_exam_criteria()
-
-        items = self.builder_service.normalize_cart_items([raw_item])
-        if not items:
-            return
-
-        self.cart_items.extend(item.to_dict() for item in items)
-        self._set_cart_data()
-
-        if hasattr(self.view, "clear_exam_cart_item"):
-            self.view.clear_exam_cart_item()
-
-    def on_remove_cart_clicked(self) -> None:
-        selected_index = self._get_selected_cart_index()
-        if selected_index is None:
-            return
-
-        if 0 <= selected_index < len(self.cart_items):
-            self.cart_items.pop(selected_index)
-            self._set_cart_data()
-
-    def on_clear_cart_clicked(self) -> None:
-        self.cart_items.clear()
-        if hasattr(self.view, "clear_cart"):
-            self.view.clear_cart()
-        else:
-            self._set_cart_data()
-
-    def on_generate_clicked(self) -> None:
-        criteria = self._get_exam_criteria()
-        criteria["cart_items"] = self._get_cart_items()
-        criteria["selected_question_ids"] = self._get_manual_question_ids()
-        criteria["selected_questions"] = []
-
-        is_valid, message = self.builder_service.validate_exam_request(criteria)
-        if not is_valid:
-            self._show_error(message)
-            self._update_count_limit()
-            return
-
-        self._set_auto_extracted_questions(self.builder_service.create_random_exam(criteria))
-
-        if hasattr(self.view, "set_build_summary_data"):
-            self.view.set_build_summary_data(self.builder_service.get_last_build_summary())
-
     def on_manual_select_clicked(self) -> None:
-        criteria = self._get_exam_criteria()
-        selectable_questions = self.builder_service.get_selectable_questions(criteria)
-        selectable_data = [self._to_view_question(question) for question in selectable_questions]
-
-        if hasattr(self.view, "select_questions_from_list"):
-            selected_questions = self.view.select_questions_from_list(selectable_data)
-            if selected_questions is not None:
-                self._set_manual_selected_questions(
-                    self._merge_selected_questions(
-                        self.manual_selected_questions,
-                        selected_questions,
-                    )
-                )
+        self.manual_select_questions()
 
     def on_clear_selection_clicked(self) -> None:
-        self._clear_selected_questions()
+        self.clear_manual_selected_questions()
 
     def on_question_exclude_requested(self, question_id: Any) -> None:
-        try:
-            excluded_id = int(question_id)
-        except (TypeError, ValueError):
+        self.exclude_question(question_id)
+
+    def preview_exam(self) -> None:
+        questions = self._get_selected_view_questions()
+        if not questions:
+            self._show_error("미리보기할 문제가 없습니다.")
             return
 
-        self._remove_question_from_group("auto", excluded_id)
-        self._remove_question_from_group("manual", excluded_id)
-        self._sync_selected_questions_to_view()
+        self._show_exam_preview(questions)
 
-    def on_export_clicked(self) -> None:
-        if not self.current_questions:
-            self.on_generate_clicked()
-        if not self.current_questions:
-            return
-
-        save_path = self._get_save_path()
-        if not save_path:
-            return
-        if not save_path.lower().endswith(".pdf"):
-            save_path = f"{save_path}.pdf"
-
-        exam_info = self._get_exam_criteria()
-        success, message = self.pdf_service.export_exam_pdf(
-            save_path, exam_info, self.current_questions
-        )
-        self._show_export_result(success, message)
+    def on_preview_clicked(self) -> None:
+        self.preview_exam()
 
     def _build_service_criteria(self) -> dict[str, Any]:
         condition_data = self.view.get_exam_condition_data()
+        type_counts = condition_data.get("type_counts", {})
+        difficulty_counts = condition_data.get("difficulty_counts", {})
         return {
             "category_counts": {
-                "어휘": int(condition_data["type_counts"].get("vocabulary", 0)),
-                "문법": int(condition_data["type_counts"].get("grammar", 0)),
-                "독해": int(condition_data["type_counts"].get("reading", 0)),
+                "어휘": self._to_count(type_counts.get("vocabulary", 0)),
+                "문법": self._to_count(type_counts.get("grammar", 0)),
+                "독해": self._to_count(type_counts.get("reading", 0)),
             },
             "difficulty_counts": {
-                "쉬움": int(condition_data["difficulty_counts"].get("easy", 0)),
-                "보통": int(condition_data["difficulty_counts"].get("normal", 0)),
-                "어려움": int(condition_data["difficulty_counts"].get("hard", 0)),
+                "쉬움": self._to_count(difficulty_counts.get("easy", 0)),
+                "보통": self._to_count(difficulty_counts.get("normal", 0)),
+                "어려움": self._to_count(difficulty_counts.get("hard", 0)),
             },
             "cart_items": condition_data.get("cart_items", []),
+            "category": condition_data.get("category") or condition_data.get("type") or condition_data.get("question_type", ""),
+            "difficulty": condition_data.get("difficulty", ""),
             "sub_category": self._normalize_filter_value(str(condition_data.get("sub_category", "")), "전체 분류"),
             "tag": self._normalize_filter_value(str(condition_data.get("tag", "")), "전체 태그"),
-            "total_count": int(condition_data.get("total_count", 0)),
+            "total_count": self._to_count(condition_data.get("total_count", 0)),
         }
 
-    def _get_cart_items(self) -> list[dict[str, Any]]:
-        if hasattr(self.view, "get_exam_cart_data"):
-            raw_items = self.view.get_exam_cart_data()
-            if raw_items:
-                return [item.to_dict() if hasattr(item, "to_dict") else item for item in raw_items]
+    def _get_requested_auto_count(self, criteria: dict[str, Any]) -> int:
+        total_count = self._to_count(criteria.get("total_count", criteria.get("count", 0)))
+        if total_count:
+            return total_count
 
-        return list(self.cart_items)
+        cart_count = 0
+        for item in criteria.get("cart_items", []) or []:
+            if not isinstance(item, dict):
+                continue
+            item_total = self._to_count(item.get("total_count", item.get("count", item.get("total", 0))))
+            if item_total:
+                cart_count += item_total
+                continue
+            difficulty_counts = item.get("difficulty_counts", {})
+            if isinstance(difficulty_counts, dict):
+                cart_count += sum(self._to_count(count) for count in difficulty_counts.values())
+        if cart_count:
+            return cart_count
 
-    def _set_cart_data(self) -> None:
-        if hasattr(self.view, "set_cart_data"):
-            self.view.set_cart_data(self.cart_items)
+        category_count = sum(self._to_count(count) for count in criteria.get("category_counts", {}).values())
+        difficulty_count = sum(self._to_count(count) for count in criteria.get("difficulty_counts", {}).values())
+        return max(category_count, difficulty_count)
+
+    def _to_count(self, value: Any) -> int:
+        if value in (None, ""):
+            return 0
+        try:
+            return max(int(value), 0)
+        except (TypeError, ValueError):
+            return 0
 
     def _refresh_generated_exams(self) -> None:
         if not hasattr(self.view, "set_generated_exams"):
@@ -391,13 +333,6 @@ class ExamController:
             ]
         )
 
-    def _get_selected_cart_index(self) -> int | None:
-        if hasattr(self.view, "get_selected_cart_index"):
-            return self.view.get_selected_cart_index()
-        if hasattr(self.view, "get_selected_cart_item_index"):
-            return self.view.get_selected_cart_item_index()
-        return None
-
     def _with_all_option(self, all_label: str, values: list[str]) -> list[str]:
         deduped_values = [value for value in values if value and value != all_label]
         return [all_label] + deduped_values
@@ -416,25 +351,6 @@ class ExamController:
         return criteria
 
     def _get_selected_question_ids(self) -> list[int]:
-        if self.auto_extracted_questions or self.manual_selected_questions:
-            return [
-                question_id
-                for question in self._get_selected_view_questions()
-                if (question_id := self._get_question_id(question)) is not None
-            ]
-
-        if hasattr(self.view, "get_selected_question_ids"):
-            selected_ids = self.view.get_selected_question_ids() or []
-            if selected_ids:
-                normalized_ids = []
-                for question_id in selected_ids:
-                    try:
-                        normalized_ids.append(int(question_id))
-                    except (TypeError, ValueError):
-                        continue
-                if normalized_ids:
-                    return normalized_ids
-
         return [
             question_id
             for question in self._get_selected_view_questions()
@@ -481,14 +397,6 @@ class ExamController:
             self.view.set_selected_questions(combined_questions)
         if hasattr(self.view, "set_preview_data"):
             self.view.set_preview_data(combined_questions)
-
-    def _clear_view_selection(self) -> None:
-        self.current_questions = []
-        self.selected_questions = []
-        if hasattr(self.view, "set_selected_questions"):
-            self.view.set_selected_questions([])
-        if hasattr(self.view, "set_preview_data"):
-            self.view.set_preview_data([])
 
     def _get_selected_view_questions(self) -> list[dict[str, Any]]:
         if self.auto_extracted_questions or self.manual_selected_questions:
@@ -553,13 +461,6 @@ class ExamController:
         except (TypeError, ValueError):
             return None
 
-    def _get_save_path(self) -> str:
-        if hasattr(self.view, "get_pdf_save_path"):
-            return self.view.get_pdf_save_path()
-        if hasattr(self.view, "get_save_path"):
-            return self.view.get_save_path()
-        return ""
-
     def _to_view_question(self, question: Any) -> dict[str, Any]:
         if isinstance(question, dict):
             return dict(question)
@@ -591,22 +492,6 @@ class ExamController:
         except (TypeError, ValueError):
             return None
 
-    def preview_exam(self) -> None:
-        questions = self._get_selected_view_questions()
-        if not questions:
-            self._show_error("미리보기할 문제가 없습니다.")
-            return
-
-        self._show_exam_preview(questions)
-
-    def on_preview_clicked(self) -> None:
-        if not self.current_questions and not self._get_selected_view_questions():
-            self.on_generate_clicked()
-
-        questions = self._get_selected_view_questions()
-        if questions:
-            self._show_exam_preview(questions)
-
     def _show_exam_preview(self, questions: list[Any]) -> None:
         view_questions = [self._to_view_question(question) for question in questions]
         self.current_questions = list(view_questions)
@@ -620,9 +505,15 @@ class ExamController:
         exam_data = self._get_exam_criteria()
         preview_method_names = (
             "show_exam_preview",
+            "show_exam_preview_dialog",
+            "show_exam_paper_preview",
             "open_exam_preview",
+            "open_exam_preview_dialog",
+            "open_exam_paper_preview",
             "show_preview",
+            "show_preview_dialog",
             "open_preview",
+            "open_preview_dialog",
             "display_exam_preview",
             "display_preview",
         )
