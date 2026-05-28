@@ -28,9 +28,21 @@ class ExamRepository:
         
         try:
             cursor.execute('''
-                INSERT INTO exams (exam_name, description, exam_date, target_class, total_questions)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (exam.exam_name, exam.description, exam.exam_date, exam.target_class, exam.total_questions))
+                INSERT INTO exams (
+                    exam_name, description, year, semester, exam_type,
+                    exam_date, target_class, total_questions
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                exam.exam_name,
+                exam.description,
+                exam.year,
+                exam.semester,
+                exam.exam_type,
+                exam.exam_date,
+                exam.target_class,
+                exam.total_questions,
+            ))
             
             conn.commit()
             exam_id = cursor.lastrowid
@@ -145,9 +157,20 @@ class ExamRepository:
         try:
             cursor.execute('''
                 UPDATE exams
-                SET exam_name = ?, description = ?, exam_date = ?, target_class = ?, total_questions = ?
+                SET exam_name = ?, description = ?, year = ?, semester = ?, exam_type = ?,
+                    exam_date = ?, target_class = ?, total_questions = ?
                 WHERE exam_id = ?
-            ''', (exam.exam_name, exam.description, exam.exam_date, exam.target_class, exam.total_questions, exam.exam_id))
+            ''', (
+                exam.exam_name,
+                exam.description,
+                exam.year,
+                exam.semester,
+                exam.exam_type,
+                exam.exam_date,
+                exam.target_class,
+                exam.total_questions,
+                exam.exam_id,
+            ))
             
             conn.commit()
             rows_affected = cursor.rowcount
