@@ -14,6 +14,8 @@ class ExamBuildItem:
     category: str
     total_count: int = 0
     difficulty_counts: dict[str, int] = field(default_factory=dict)
+    sub_category: str = ""
+    tag: str = ""
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ExamBuildItem":
@@ -26,9 +28,17 @@ class ExamBuildItem:
             total_count = sum(difficulty_counts.values())
 
         return cls(
-            category=str(data.get("category", data.get("type", ""))).strip(),
+            category=cls._normalize_category(data.get("category", data.get("type", ""))),
             total_count=total_count,
             difficulty_counts=difficulty_counts,
+            sub_category=cls._normalize_all_option(
+                data.get("sub_category", data.get("subcategory", "")),
+                {"전체 분류", "전체분류", "all", "all categories"},
+            ),
+            tag=cls._normalize_all_option(
+                data.get("tag", data.get("tags", "")),
+                {"전체 태그", "전체태그", "all", "all tags"},
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -36,6 +46,8 @@ class ExamBuildItem:
             "category": self.category,
             "total_count": self.total_count,
             "difficulty_counts": dict(self.difficulty_counts),
+            "sub_category": self.sub_category,
+            "tag": self.tag,
         }
 
     def is_empty(self) -> bool:
@@ -52,24 +64,65 @@ class ExamBuildItem:
             raw_counts = {}
 
         counts = {
-            str(difficulty).strip(): ExamBuildItem._to_count(count)
+            ExamBuildItem._normalize_difficulty(difficulty): ExamBuildItem._to_count(count)
             for difficulty, count in raw_counts.items()
-            if str(difficulty).strip()
+            if ExamBuildItem._normalize_difficulty(difficulty)
         }
 
         difficulty_aliases = {
             "easy_count": "쉬움",
-            "medium_count": "중간",
+            "medium_count": "보통",
+            "normal_count": "보통",
             "hard_count": "어려움",
             "low_count": "쉬움",
-            "middle_count": "중간",
+            "middle_count": "보통",
             "high_count": "어려움",
         }
         for key, difficulty in difficulty_aliases.items():
             if key in data:
                 counts[difficulty] = ExamBuildItem._to_count(data.get(key))
 
+        single_difficulty = ExamBuildItem._normalize_difficulty(
+            data.get("difficulty", data.get("level", ""))
+        )
+        single_count = ExamBuildItem._to_count(
+            data.get("total_count", data.get("count", data.get("total", 0)))
+        )
+        if single_difficulty and single_count and not counts:
+            counts[single_difficulty] = single_count
+
         return counts
+
+    @staticmethod
+    def _normalize_category(value: Any) -> str:
+        value = str(value or "").strip()
+        aliases = {
+            "vocabulary": "어휘",
+            "vocab": "어휘",
+            "word": "어휘",
+            "grammar": "문법",
+            "reading": "독해",
+        }
+        return aliases.get(value.lower(), value)
+
+    @staticmethod
+    def _normalize_difficulty(value: Any) -> str:
+        value = str(value or "").strip()
+        aliases = {
+            "easy": "쉬움",
+            "low": "쉬움",
+            "normal": "보통",
+            "medium": "보통",
+            "middle": "보통",
+            "hard": "어려움",
+            "high": "어려움",
+        }
+        return aliases.get(value.lower(), value)
+
+    @staticmethod
+    def _normalize_all_option(value: Any, all_labels: set[str]) -> str:
+        value = str(value or "").strip()
+        return "" if value.lower() in {label.lower() for label in all_labels} else value
 
     @staticmethod
     def _to_count(value: Any) -> int:

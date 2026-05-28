@@ -5,6 +5,8 @@ from typing import Any
 
 from app.models.exam_builder_model import ExamBuildItem
 from app.models.question_model import Question
+from app.repositories.exam_question_repository import ExamQuestionRepository
+from app.repositories.exam_repository import ExamRepository
 
 
 class ExamBuilderService:
@@ -14,6 +16,58 @@ class ExamBuilderService:
     def __init__(self, question_repository) -> None:
         self.question_repository = question_repository
         self.last_build_summary: dict[str, Any] = {}
+
+    def get_saved_exam_detail(self, exam_id: Any) -> dict[str, Any]:
+        """Build saved exam detail data for Controller/View use."""
+        try:
+            target_exam_id = int(exam_id)
+        except (TypeError, ValueError):
+            return {
+                "success": False,
+                "message": "유효하지 않은 시험지 ID입니다.",
+                "exam": None,
+                "questions": [],
+            }
+
+        try:
+            exam = ExamRepository.read(target_exam_id)
+        except Exception as exc:
+            return {
+                "success": False,
+                "message": f"시험지 조회 중 오류가 발생했습니다: {exc}",
+                "exam": None,
+                "questions": [],
+            }
+
+        if exam is None:
+            return {
+                "success": False,
+                "message": "저장된 시험지를 찾을 수 없습니다.",
+                "exam": None,
+                "questions": [],
+            }
+
+        try:
+            question_rows = ExamQuestionRepository.read_question_details_by_exam(target_exam_id)
+        except Exception as exc:
+            return {
+                "success": False,
+                "message": f"시험지 문항 조회 중 오류가 발생했습니다: {exc}",
+                "exam": self._build_exam_detail_header(exam, []),
+                "questions": [],
+            }
+
+        questions = self._build_exam_detail_questions(question_rows)
+        return {
+            "success": True,
+            "message": "",
+            "exam": self._build_exam_detail_header(exam, questions),
+            "questions": questions,
+        }
+
+    def build_exam_detail_view_data(self, exam_id: Any) -> dict[str, Any]:
+        """Compatibility alias for UI/Controller callers."""
+        return self.get_saved_exam_detail(exam_id)
 
     def create_random_exam(self, criteria: dict[str, Any]) -> list[Question]:
         """
@@ -36,13 +90,98 @@ class ExamBuilderService:
         selected_questions: list[Question] = []
         selected_ids = selected_ids or set()
         summary_items = []
-        has_count_condition = False
+        category_counts = {
+            category: self._to_count(count)
+            for category, count in criteria.get("category_counts", {}).items()
+            if self._to_count(count) > 0
+        }
+        difficulty_counts = {
+            difficulty: self._to_count(count)
+            for difficulty, count in criteria.get("difficulty_counts", {}).items()
+            if self._to_count(count) > 0
+        }
+        has_count_condition = bool(category_counts or difficulty_counts)
 
-        for category, count in criteria.get("category_counts", {}).items():
-            category_count = self._to_count(count)
-            if category_count <= 0:
-                continue
-            has_count_condition = True
+        if category_counts and difficulty_counts:
+            remaining_difficulty_counts = dict(difficulty_counts)
+            for category, category_count in category_counts.items():
+                remaining_category_count = category_count
+                specified_category_count = 0
+                selected_by_difficulty: dict[str, int] = {}
+
+                for difficulty, difficulty_count in list(remaining_difficulty_counts.items()):
+                    requested_count = min(difficulty_count, remaining_category_count)
+                    if requested_count <= 0:
+                        continue
+
+                    specified_category_count += requested_count
+                    combined_candidates = [
+                        question
+                        for question in candidates
+                        if question.category == category
+                        and question.difficulty == difficulty
+                        and question.question_id not in selected_ids
+                    ]
+                    selected = self._sample_questions(
+                        combined_candidates,
+                        requested_count,
+                        selected_ids,
+                    )
+                    selected_questions.extend(selected)
+                    selected_count = len(selected)
+                    selected_by_difficulty[difficulty] = selected_count
+                    remaining_category_count -= selected_count
+                    remaining_difficulty_counts[difficulty] = max(
+                        remaining_difficulty_counts[difficulty] - requested_count,
+                        0,
+                    )
+
+                    if remaining_category_count <= 0:
+                        break
+
+                unspecified_category_count = min(
+                    max(category_count - specified_category_count, 0),
+                    remaining_category_count,
+                )
+                if unspecified_category_count > 0:
+                    category_candidates = [
+                        question
+                        for question in candidates
+                        if question.category == category and question.question_id not in selected_ids
+                    ]
+                    selected = self._sample_questions(
+                        category_candidates,
+                        unspecified_category_count,
+                        selected_ids,
+                    )
+                    selected_questions.extend(selected)
+
+                summary_items.append(
+                    self._build_summary_item(
+                        category,
+                        category_count,
+                        min(category_count, len([
+                            question
+                            for question in selected_questions
+                            if question.category == category
+                        ])),
+                        selected_by_difficulty,
+                    )
+                )
+
+            total_count = self._to_count(criteria.get("total_count", criteria.get("count", 0)))
+            requested_count = total_count or sum(category_counts.values())
+            if total_count:
+                selected_questions = selected_questions[:total_count]
+            self.last_build_summary = {
+                "requested_count": requested_count,
+                "selected_count": len(selected_questions),
+                "shortage": max(requested_count - len(selected_questions), 0),
+                "items": summary_items,
+            }
+            return selected_questions
+
+        for category, category_count in category_counts.items():
             category_candidates = [
                 question
                 for question in candidates
@@ -52,11 +191,7 @@ class ExamBuilderService:
             selected_questions.extend(selected)
             summary_items.append(self._build_summary_item(category, category_count, len(selected), {}))
 
-        for difficulty, count in criteria.get("difficulty_counts", {}).items():
-            difficulty_count = self._to_count(count)
-            if difficulty_count <= 0:
-                continue
-            has_count_condition = True
+        for difficulty, difficulty_count in difficulty_counts.items():
             difficulty_candidates = [
                 question
                 for question in candidates
@@ -154,14 +289,69 @@ class ExamBuilderService:
             "classes": ["1학년 1반", "1학년 2반", "1학년 3반"],
         }
 
+    def _build_exam_detail_header(self, exam: Any, questions: list[dict[str, Any]]) -> dict[str, Any]:
+        exam_date = str(getattr(exam, "exam_date", "") or "")
+        year = str(getattr(exam, "year", "") or "").strip() or self._extract_year(exam_date)
+        return {
+            "exam_id": getattr(exam, "exam_id", None),
+            "title": getattr(exam, "exam_name", "") or "",
+            "exam_name": getattr(exam, "exam_name", "") or "",
+            "description": getattr(exam, "description", "") or "",
+            "year": year,
+            "semester": getattr(exam, "semester", "") or "",
+            "exam_type": getattr(exam, "exam_type", "") or "",
+            "class_name": getattr(exam, "target_class", "") or "",
+            "target_class": getattr(exam, "target_class", "") or "",
+            "exam_date": exam_date,
+            "question_count": getattr(exam, "total_questions", None) or len(questions),
+            "total_questions": getattr(exam, "total_questions", None) or len(questions),
+            "status": "저장됨",
+            "created_at": getattr(exam, "created_at", "") or "",
+        }
+
+    def _build_exam_detail_questions(self, question_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        questions = []
+        for fallback_order, row in enumerate(question_rows, start=1):
+            order = self._to_count(row.get("question_order")) or fallback_order
+            questions.append(
+                {
+                    "order": order,
+                    "question_order": order,
+                    "exam_question_id": row.get("exam_question_id"),
+                    "question_id": row.get("question_id"),
+                    "content": row.get("question_text") or "",
+                    "question_text": row.get("question_text") or "",
+                    "answer": row.get("answer_text") or "",
+                    "answer_text": row.get("answer_text") or "",
+                    "acceptable_answers": row.get("acceptable_answers") or "",
+                    "category": row.get("category") or "",
+                    "type": row.get("category") or "",
+                    "sub_category": row.get("sub_category") or "",
+                    "difficulty": row.get("difficulty") or "",
+                    "tag": row.get("tags") or "",
+                    "tags": row.get("tags") or "",
+                    "explanation": row.get("explanation") or "",
+                    "is_active": row.get("is_active"),
+                }
+            )
+        return questions
+
+    def _extract_year(self, exam_date: str) -> str:
+        if len(exam_date) >= 4 and exam_date[:4].isdigit():
+            return exam_date[:4]
+        return ""
+
     def validate_exam_request(self, criteria: dict[str, Any]) -> tuple[bool, str]:
         """Validate requested auto-extraction counts against currently available questions."""
         selected_ids = set(self._to_id_list(criteria.get("selected_question_ids", [])))
         validation_items = self._get_validation_items(criteria)
 
         for item in validation_items:
+            validation_criteria = dict(criteria)
+            validation_criteria["sub_category"] = item.get("sub_category", criteria.get("sub_category", ""))
+            validation_criteria["tag"] = item.get("tag", criteria.get("tag", ""))
             available_count = self.count_available_questions(
-                criteria,
+                validation_criteria,
                 category=item.get("category"),
                 difficulty=item.get("difficulty"),
                 excluded_question_ids=selected_ids,
@@ -208,6 +398,7 @@ class ExamBuilderService:
     ) -> tuple[list[Question], dict[str, Any]]:
         selected: list[Question] = []
         remaining_budget = item.total_count
+        item_criteria = self._criteria_for_cart_item(criteria, item)
 
         for difficulty, count in item.difficulty_counts.items():
             if remaining_budget <= 0:
@@ -216,7 +407,7 @@ class ExamBuilderService:
             requested_count = min(self._to_count(count), remaining_budget)
             selected.extend(
                 self._select_candidates(
-                    criteria=criteria,
+                    criteria=item_criteria,
                     category=item.category,
                     difficulty=difficulty,
                     count=requested_count,
@@ -229,7 +420,7 @@ class ExamBuilderService:
         if remaining_count:
             selected.extend(
                 self._select_candidates(
-                    criteria=criteria,
+                    criteria=item_criteria,
                     category=item.category,
                     difficulty=None,
                     count=remaining_count,
@@ -243,6 +434,14 @@ class ExamBuilderService:
             selected_count=len(selected),
             difficulty_counts=item.difficulty_counts,
         )
+
+    def _criteria_for_cart_item(self, criteria: dict[str, Any], item: ExamBuildItem) -> dict[str, Any]:
+        item_criteria = dict(criteria)
+        item_criteria["category"] = item.category
+        item_criteria["type"] = item.category
+        item_criteria["sub_category"] = item.sub_category
+        item_criteria["tag"] = item.tag
+        return item_criteria
 
     def _select_candidates(
         self,
@@ -324,6 +523,8 @@ class ExamBuilderService:
                                 "category": item.category,
                                 "difficulty": difficulty,
                                 "count": count,
+                                "sub_category": item.sub_category,
+                                "tag": item.tag,
                             }
                         )
 
@@ -334,15 +535,65 @@ class ExamBuilderService:
                             "category": item.category,
                             "difficulty": None,
                             "count": unspecified_count,
+                            "sub_category": item.sub_category,
+                            "tag": item.tag,
                         }
                     )
             return items
 
         items = []
-        for category, count in criteria.get("category_counts", {}).items():
-            items.append({"category": category, "difficulty": None, "count": count})
-        for difficulty, count in criteria.get("difficulty_counts", {}).items():
-            items.append({"category": None, "difficulty": difficulty, "count": count})
+        category_counts = {
+            category: self._to_count(count)
+            for category, count in criteria.get("category_counts", {}).items()
+            if self._to_count(count) > 0
+        }
+        difficulty_counts = {
+            difficulty: self._to_count(count)
+            for difficulty, count in criteria.get("difficulty_counts", {}).items()
+            if self._to_count(count) > 0
+        }
+        if category_counts and difficulty_counts:
+            remaining_difficulty_counts = dict(difficulty_counts)
+            for category, category_count in category_counts.items():
+                remaining_category_count = category_count
+                specified_category_count = 0
+                for difficulty, difficulty_count in list(remaining_difficulty_counts.items()):
+                    requested_count = min(difficulty_count, remaining_category_count)
+                    if requested_count <= 0:
+                        continue
+                    specified_category_count += requested_count
+                    items.append(
+                        {
+                            "category": category,
+                            "difficulty": difficulty,
+                            "count": requested_count,
+                        }
+                    )
+                    remaining_category_count -= requested_count
+                    remaining_difficulty_counts[difficulty] = max(
+                        remaining_difficulty_counts[difficulty] - requested_count,
+                        0,
+                    )
+                    if remaining_category_count <= 0:
+                        break
+
+                unspecified_count = min(
+                    max(category_count - specified_category_count, 0),
+                    remaining_category_count,
+                )
+                if unspecified_count:
+                    items.append(
+                        {
+                            "category": category,
+                            "difficulty": None,
+                            "count": unspecified_count,
+                        }
+                    )
+        else:
+            for category, count in category_counts.items():
+                items.append({"category": category, "difficulty": None, "count": count})
+            for difficulty, count in difficulty_counts.items():
+                items.append({"category": None, "difficulty": difficulty, "count": count})
         if not items and self._to_count(criteria.get("total_count", criteria.get("count", 0))):
             items.append(
                 {
@@ -368,6 +619,7 @@ class ExamBuilderService:
                     exam_name=criteria.get("exam_name"),
                     class_name=criteria.get("class_name"),
                     sub_category=criteria.get("sub_category"),
+                    tag=criteria.get("tag"),
                 )
             else:
                 candidates = self.question_repository.read_all(active_only=True)
