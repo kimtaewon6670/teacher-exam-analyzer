@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -30,7 +31,19 @@ class ResultInputView(QWidget):
         self._class_ids: list[object] = []
         self._student_ids: list[object] = []
 
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        root_layout.addWidget(scroll)
+
+        content = QWidget()
+        content.setMinimumWidth(980)
+        scroll.setWidget(content)
+
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(28, 26, 28, 24)
         layout.setSpacing(16)
 
@@ -46,6 +59,7 @@ class ResultInputView(QWidget):
         layout.addWidget(self._build_csv_card(), 1)
         layout.addWidget(self._build_validation_card())
         layout.addWidget(self._build_action_bar())
+        layout.addStretch()
 
         self.setStyleSheet(
             """

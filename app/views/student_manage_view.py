@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -28,7 +29,19 @@ class StudentManageView(QWidget):
         self.student_controller = student_controller
         self.setObjectName("studentManageView")
 
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        root_layout.addWidget(scroll)
+
+        content = QWidget()
+        content.setMinimumWidth(920)
+        scroll.setWidget(content)
+
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(28, 26, 28, 24)
         layout.setSpacing(16)
 
@@ -39,6 +52,7 @@ class StudentManageView(QWidget):
         layout.addWidget(self._build_register_card())
         layout.addWidget(self._build_search_card())
         layout.addWidget(self._build_table_card(), 1)
+        layout.addStretch()
 
         self._refresh_students()
 
