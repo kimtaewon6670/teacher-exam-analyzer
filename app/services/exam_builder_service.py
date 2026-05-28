@@ -241,8 +241,11 @@ class ExamBuilderService:
         validation_items = self._get_validation_items(criteria)
 
         for item in validation_items:
+            validation_criteria = dict(criteria)
+            validation_criteria["sub_category"] = item.get("sub_category", criteria.get("sub_category", ""))
+            validation_criteria["tag"] = item.get("tag", criteria.get("tag", ""))
             available_count = self.count_available_questions(
-                criteria,
+                validation_criteria,
                 category=item.get("category"),
                 difficulty=item.get("difficulty"),
                 excluded_question_ids=selected_ids,
@@ -289,6 +292,7 @@ class ExamBuilderService:
     ) -> tuple[list[Question], dict[str, Any]]:
         selected: list[Question] = []
         remaining_budget = item.total_count
+        item_criteria = self._criteria_for_cart_item(criteria, item)
 
         for difficulty, count in item.difficulty_counts.items():
             if remaining_budget <= 0:
@@ -297,7 +301,7 @@ class ExamBuilderService:
             requested_count = min(self._to_count(count), remaining_budget)
             selected.extend(
                 self._select_candidates(
-                    criteria=criteria,
+                    criteria=item_criteria,
                     category=item.category,
                     difficulty=difficulty,
                     count=requested_count,
@@ -310,7 +314,7 @@ class ExamBuilderService:
         if remaining_count:
             selected.extend(
                 self._select_candidates(
-                    criteria=criteria,
+                    criteria=item_criteria,
                     category=item.category,
                     difficulty=None,
                     count=remaining_count,
@@ -324,6 +328,14 @@ class ExamBuilderService:
             selected_count=len(selected),
             difficulty_counts=item.difficulty_counts,
         )
+
+    def _criteria_for_cart_item(self, criteria: dict[str, Any], item: ExamBuildItem) -> dict[str, Any]:
+        item_criteria = dict(criteria)
+        item_criteria["category"] = item.category
+        item_criteria["type"] = item.category
+        item_criteria["sub_category"] = item.sub_category
+        item_criteria["tag"] = item.tag
+        return item_criteria
 
     def _select_candidates(
         self,
@@ -405,6 +417,8 @@ class ExamBuilderService:
                                 "category": item.category,
                                 "difficulty": difficulty,
                                 "count": count,
+                                "sub_category": item.sub_category,
+                                "tag": item.tag,
                             }
                         )
 
@@ -415,6 +429,8 @@ class ExamBuilderService:
                             "category": item.category,
                             "difficulty": None,
                             "count": unspecified_count,
+                            "sub_category": item.sub_category,
+                            "tag": item.tag,
                         }
                     )
             return items
@@ -497,6 +513,7 @@ class ExamBuilderService:
                     exam_name=criteria.get("exam_name"),
                     class_name=criteria.get("class_name"),
                     sub_category=criteria.get("sub_category"),
+                    tag=criteria.get("tag"),
                 )
             else:
                 candidates = self.question_repository.read_all(active_only=True)

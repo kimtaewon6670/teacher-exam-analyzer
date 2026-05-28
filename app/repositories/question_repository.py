@@ -549,6 +549,7 @@ class QuestionRepository:
         exam_name: Optional[str] = None,
         class_name: Optional[str] = None,
         sub_category: Optional[str] = None,
+        tag: Optional[str] = None,
         active_only: bool = True,
     ) -> List[Question]:
         """
@@ -578,6 +579,9 @@ class QuestionRepository:
         if sub_category:
             conditions.append("sub_category = ?")
             params.append(sub_category)
+        if tag:
+            conditions.append("tags LIKE ?")
+            params.append(f"%{tag}%")
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
