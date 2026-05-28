@@ -41,6 +41,8 @@ class ExamBuilderView(QWidget):
         self.setObjectName("examBuilderView")
         self.condition_cart_items: list[dict[str, object]] = []
         self.selected_questions: list[dict[str, object]] = []
+        self.auto_extracted_questions: list[dict[str, object]] = []
+        self.manual_selected_questions: list[dict[str, object]] = []
         self.generated_exams: list[dict[str, object]] = []
         self.selected_questions_window: SelectedQuestionListDialog | None = None
 
@@ -68,8 +70,7 @@ class ExamBuilderView(QWidget):
         top_row.addWidget(self._build_condition_cart_card(), 1)
         layout.addLayout(top_row)
 
-        layout.addWidget(self._build_selection_action_card())
-        layout.addWidget(self._build_selected_questions_card(), 1)
+        layout.addWidget(self._build_question_selection_workspace(), 1)
         layout.addWidget(self._build_generated_exams_card(), 1)
         layout.addWidget(self._build_output_action_card())
         layout.addStretch()
@@ -223,9 +224,16 @@ class ExamBuilderView(QWidget):
 
     def set_selected_questions(self, questions: list[dict[str, object]]) -> None:
         self.selected_questions = questions
-        self._fill_selected_questions_table(self.selected_questions_table, questions, include_exclude=True)
         if self.selected_questions_window is not None:
             self.selected_questions_window.set_questions_data(questions)
+
+    def set_auto_extracted_questions(self, questions: list[dict[str, object]]) -> None:
+        self.auto_extracted_questions = questions
+        self._fill_question_source_table(self.auto_extracted_table, questions, "auto")
+
+    def set_manual_selected_questions(self, questions: list[dict[str, object]]) -> None:
+        self.manual_selected_questions = questions
+        self._fill_question_source_table(self.manual_selected_table, questions, "manual")
 
     def get_selected_question_ids(self) -> list[object]:
         return [
@@ -325,6 +333,8 @@ class ExamBuilderView(QWidget):
         self.sub_category_combo.setCurrentIndex(0)
         self.tag_combo.setCurrentIndex(0)
         self.set_selected_questions([])
+        self.set_auto_extracted_questions([])
+        self.set_manual_selected_questions([])
 
     def show_message(self, message: str) -> None:
         QMessageBox.information(self, "안내", message)
@@ -426,6 +436,77 @@ class ExamBuilderView(QWidget):
         self.condition_cart_table.setSelectionMode(QTableWidget.NoSelection)
         layout.addWidget(self.condition_cart_table, 1)
         return card
+
+    def _build_question_selection_workspace(self) -> QWidget:
+        workspace = QWidget()
+        layout = QVBoxLayout(workspace)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        list_row = QHBoxLayout()
+        list_row.setSpacing(16)
+        auto_card, self.auto_extracted_table = self._build_question_source_card(
+            "자동 추출 문제",
+            "자동 추출",
+            self._handle_auto_extract_clicked,
+            "초기화",
+            lambda: self.set_auto_extracted_questions([]),
+        )
+        manual_card, self.manual_selected_table = self._build_question_source_card(
+            "직접 선택한 문제",
+            "문제 선택",
+            self._handle_manual_select_clicked,
+            "초기화",
+            lambda: self.set_manual_selected_questions([]),
+        )
+        list_row.addWidget(auto_card, 1)
+        list_row.addWidget(manual_card, 1)
+        layout.addLayout(list_row)
+
+        action_card = self._make_card("시험지 문제 구성")
+        action_layout = action_card.layout()
+        action_row = QHBoxLayout()
+        action_row.addStretch()
+        full_view_button = QPushButton("전체 보기")
+        full_view_button.setFixedWidth(100)
+        full_view_button.clicked.connect(self._open_selected_questions_window)
+        generate_button = QPushButton("생성")
+        generate_button.setObjectName("primaryButton")
+        generate_button.setFixedWidth(120)
+        generate_button.clicked.connect(self._combine_question_sources)
+        action_row.addWidget(full_view_button)
+        action_row.addWidget(generate_button)
+        action_layout.addLayout(action_row)
+        layout.addWidget(action_card)
+        return workspace
+
+    def _build_question_source_card(self, title: str, primary_text: str, primary_handler, clear_text: str, clear_handler):
+        card = self._make_card(title)
+        card.setMinimumHeight(250)
+        layout = card.layout()
+
+        button_row = QHBoxLayout()
+        primary_button = QPushButton(primary_text)
+        primary_button.setObjectName("primaryButton")
+        clear_button = QPushButton(clear_text)
+        clear_button.setObjectName("dangerButton")
+        primary_button.clicked.connect(primary_handler)
+        clear_button.clicked.connect(clear_handler)
+        button_row.addWidget(primary_button)
+        button_row.addWidget(clear_button)
+        button_row.addStretch()
+        layout.addLayout(button_row)
+
+        table = QTableWidget(0, 7)
+        table.setHorizontalHeaderLabels(["순번", "문제 내용", "유형", "세부 분류", "난이도", "기준 정답", "제거"])
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+        table.setColumnWidth(1, 260)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setSelectionMode(QTableWidget.NoSelection)
+        layout.addWidget(table, 1)
+        return card, table
 
     def _build_selection_action_card(self) -> QFrame:
         card = self._make_card("문제 선택 방식")
@@ -567,6 +648,91 @@ class ExamBuilderView(QWidget):
         if 0 <= index < len(self.condition_cart_items):
             self.condition_cart_items.pop(index)
             self._refresh_condition_cart_table()
+
+    def _handle_auto_extract_clicked(self) -> None:
+        self.auto_extract_requested.emit()
+        if not self.auto_extracted_questions:
+            self.set_auto_extracted_questions(
+                [
+                    {
+                        "question_id": 201,
+                        "content": "자동 추출된 어휘 문제",
+                        "type": "어휘",
+                        "sub_category": "동의어",
+                        "difficulty": "쉬움",
+                        "answer": "important",
+                        "tags": "auto",
+                    },
+                    {
+                        "question_id": 202,
+                        "content": "자동 추출된 문법 문제",
+                        "type": "문법",
+                        "sub_category": "시제",
+                        "difficulty": "보통",
+                        "answer": "has gone",
+                        "tags": "auto",
+                    },
+                ]
+            )
+
+    def _handle_manual_select_clicked(self) -> None:
+        self.manual_select_requested.emit()
+        if not self.manual_selected_questions:
+            self.set_manual_selected_questions(
+                [
+                    {
+                        "question_id": 301,
+                        "content": "직접 선택한 독해 문제",
+                        "type": "독해",
+                        "sub_category": "주제 찾기",
+                        "difficulty": "어려움",
+                        "answer": "environmental protection",
+                        "tags": "manual",
+                    }
+                ]
+            )
+
+    def _combine_question_sources(self) -> None:
+        self.set_selected_questions(self.auto_extracted_questions + self.manual_selected_questions)
+
+    def _remove_source_question(self, source: str, question_id: object) -> None:
+        if source == "auto":
+            self.set_auto_extracted_questions(
+                [question for question in self.auto_extracted_questions if question.get("question_id") != question_id]
+            )
+        elif source == "manual":
+            self.set_manual_selected_questions(
+                [question for question in self.manual_selected_questions if question.get("question_id") != question_id]
+            )
+
+    def _fill_question_source_table(self, table: QTableWidget, questions: list[dict[str, object]], source: str) -> None:
+        table.setRowCount(len(questions))
+        for row_index, question in enumerate(questions):
+            values = [
+                str(row_index + 1),
+                str(question.get("content", "")),
+                str(question.get("type", "")),
+                str(question.get("sub_category", "")),
+                str(question.get("difficulty", "")),
+                str(question.get("answer", "")),
+            ]
+
+            for column_index, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                alignment = Qt.AlignLeft | Qt.AlignVCenter if column_index == 1 else Qt.AlignCenter
+                item.setTextAlignment(alignment)
+                table.setItem(row_index, column_index, item)
+
+            question_id = question.get("question_id")
+            table.setCellWidget(
+                row_index,
+                6,
+                self._make_table_button_cell(
+                    "제거",
+                    lambda checked=False, qid=question_id, src=source: self._remove_source_question(src, qid),
+                ),
+            )
+            table.setRowHeight(row_index, 40)
 
     def _fill_selected_questions_table(
         self,
