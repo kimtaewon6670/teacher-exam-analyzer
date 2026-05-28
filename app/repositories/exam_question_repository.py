@@ -72,6 +72,50 @@ class ExamQuestionRepository:
             raise
         finally:
             close_db_connection(conn)
+
+    @staticmethod
+    def read_question_details_by_exam(exam_id: int) -> List[dict]:
+        """
+        Return the questions saved in an exam in their stored order.
+
+        This repository method only performs DB lookup/join work. The Service layer
+        is responsible for shaping the result for the View.
+        """
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                '''
+                SELECT
+                    eq.exam_question_id,
+                    eq.exam_id,
+                    eq.question_id,
+                    eq.question_order,
+                    q.question_text,
+                    q.category,
+                    q.sub_category,
+                    q.difficulty,
+                    q.answer_text,
+                    q.acceptable_answers,
+                    q.explanation,
+                    q.tags,
+                    q.is_active,
+                    q.created_at
+                FROM exam_questions eq
+                LEFT JOIN questions q ON q.question_id = eq.question_id
+                WHERE eq.exam_id = ?
+                ORDER BY eq.question_order
+                ''',
+                (exam_id,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+        except sqlite3.Error as e:
+            print(f"??Database error: {e}")
+            raise
+        finally:
+            close_db_connection(conn)
     
     @staticmethod
     def read_question_ids_by_exam(exam_id: int) -> List[int]:

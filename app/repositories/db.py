@@ -69,12 +69,18 @@ def init_database():
                 exam_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 exam_name TEXT NOT NULL,
                 description TEXT,
+                year TEXT,
+                semester TEXT,
+                exam_type TEXT,
                 exam_date DATE,
                 target_class TEXT NOT NULL,
                 total_questions INTEGER NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        _ensure_column(cursor, "exams", "year", "TEXT")
+        _ensure_column(cursor, "exams", "semester", "TEXT")
+        _ensure_column(cursor, "exams", "exam_type", "TEXT")
         
         # exam_questions 테이블
         cursor.execute('''

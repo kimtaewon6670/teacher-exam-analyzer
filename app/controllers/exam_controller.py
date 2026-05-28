@@ -49,6 +49,8 @@ class ExamController:
             self.view.preview_requested.connect(self.preview_exam)
         if hasattr(self.view, "exam_delete_requested"):
             self.view.exam_delete_requested.connect(self.delete_exam)
+        if hasattr(self.view, "exam_view_requested"):
+            self.view.exam_view_requested.connect(self.handle_view_exam)
 
         for button_name in ("auto_clear_button", "clear_auto_button", "auto_selection_clear_button"):
             button = getattr(self.view, button_name, None)
@@ -187,6 +189,9 @@ class ExamController:
         exam = Exam(
             exam_name=exam_data["exam_name"],
             description=exam_data.get("description"),
+            year=exam_data.get("year"),
+            semester=exam_data.get("semester"),
+            exam_type=exam_data.get("exam_type") or exam_data.get("exam_category"),
             exam_date=exam_data.get("exam_date"),
             target_class=exam_data["class_name"],
             total_questions=len(question_ids),
@@ -219,6 +224,19 @@ class ExamController:
             self._show_message("시험지가 삭제되었습니다.")
         else:
             self._show_error("삭제할 시험지를 찾을 수 없습니다.")
+
+    def get_exam_detail_for_view(self, exam_id: object) -> dict[str, Any]:
+        if not hasattr(self.builder_service, "get_saved_exam_detail"):
+            return {
+                "success": False,
+                "message": "시험지 상세 조회 기능을 사용할 수 없습니다.",
+                "exam": None,
+                "questions": [],
+            }
+        return self.builder_service.get_saved_exam_detail(exam_id)
+
+    def handle_view_exam(self, exam_id: object) -> dict[str, Any]:
+        return self.get_exam_detail_for_view(exam_id)
 
     def export_pdf(self) -> None:
         questions = self._get_exam_paper_questions(self._get_selected_view_questions())

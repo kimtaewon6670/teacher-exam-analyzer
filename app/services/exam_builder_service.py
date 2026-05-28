@@ -5,6 +5,8 @@ from typing import Any
 
 from app.models.exam_builder_model import ExamBuildItem
 from app.models.question_model import Question
+from app.repositories.exam_question_repository import ExamQuestionRepository
+from app.repositories.exam_repository import ExamRepository
 
 
 class ExamBuilderService:
@@ -14,6 +16,58 @@ class ExamBuilderService:
     def __init__(self, question_repository) -> None:
         self.question_repository = question_repository
         self.last_build_summary: dict[str, Any] = {}
+
+    def get_saved_exam_detail(self, exam_id: Any) -> dict[str, Any]:
+        """Build saved exam detail data for Controller/View use."""
+        try:
+            target_exam_id = int(exam_id)
+        except (TypeError, ValueError):
+            return {
+                "success": False,
+                "message": "유효하지 않은 시험지 ID입니다.",
+                "exam": None,
+                "questions": [],
+            }
+
+        try:
+            exam = ExamRepository.read(target_exam_id)
+        except Exception as exc:
+            return {
+                "success": False,
+                "message": f"시험지 조회 중 오류가 발생했습니다: {exc}",
+                "exam": None,
+                "questions": [],
+            }
+
+        if exam is None:
+            return {
+                "success": False,
+                "message": "저장된 시험지를 찾을 수 없습니다.",
+                "exam": None,
+                "questions": [],
+            }
+
+        try:
+            question_rows = ExamQuestionRepository.read_question_details_by_exam(target_exam_id)
+        except Exception as exc:
+            return {
+                "success": False,
+                "message": f"시험지 문항 조회 중 오류가 발생했습니다: {exc}",
+                "exam": self._build_exam_detail_header(exam, []),
+                "questions": [],
+            }
+
+        questions = self._build_exam_detail_questions(question_rows)
+        return {
+            "success": True,
+            "message": "",
+            "exam": self._build_exam_detail_header(exam, questions),
+            "questions": questions,
+        }
+
+    def build_exam_detail_view_data(self, exam_id: Any) -> dict[str, Any]:
+        """Compatibility alias for UI/Controller callers."""
+        return self.get_saved_exam_detail(exam_id)
 
     def create_random_exam(self, criteria: dict[str, Any]) -> list[Question]:
         """
@@ -234,6 +288,58 @@ class ExamBuilderService:
             "tags": ["전체 태그"],
             "classes": ["1학년 1반", "1학년 2반", "1학년 3반"],
         }
+
+    def _build_exam_detail_header(self, exam: Any, questions: list[dict[str, Any]]) -> dict[str, Any]:
+        exam_date = str(getattr(exam, "exam_date", "") or "")
+        year = str(getattr(exam, "year", "") or "").strip() or self._extract_year(exam_date)
+        return {
+            "exam_id": getattr(exam, "exam_id", None),
+            "title": getattr(exam, "exam_name", "") or "",
+            "exam_name": getattr(exam, "exam_name", "") or "",
+            "description": getattr(exam, "description", "") or "",
+            "year": year,
+            "semester": getattr(exam, "semester", "") or "",
+            "exam_type": getattr(exam, "exam_type", "") or "",
+            "class_name": getattr(exam, "target_class", "") or "",
+            "target_class": getattr(exam, "target_class", "") or "",
+            "exam_date": exam_date,
+            "question_count": getattr(exam, "total_questions", None) or len(questions),
+            "total_questions": getattr(exam, "total_questions", None) or len(questions),
+            "status": "저장됨",
+            "created_at": getattr(exam, "created_at", "") or "",
+        }
+
+    def _build_exam_detail_questions(self, question_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        questions = []
+        for fallback_order, row in enumerate(question_rows, start=1):
+            order = self._to_count(row.get("question_order")) or fallback_order
+            questions.append(
+                {
+                    "order": order,
+                    "question_order": order,
+                    "exam_question_id": row.get("exam_question_id"),
+                    "question_id": row.get("question_id"),
+                    "content": row.get("question_text") or "",
+                    "question_text": row.get("question_text") or "",
+                    "answer": row.get("answer_text") or "",
+                    "answer_text": row.get("answer_text") or "",
+                    "acceptable_answers": row.get("acceptable_answers") or "",
+                    "category": row.get("category") or "",
+                    "type": row.get("category") or "",
+                    "sub_category": row.get("sub_category") or "",
+                    "difficulty": row.get("difficulty") or "",
+                    "tag": row.get("tags") or "",
+                    "tags": row.get("tags") or "",
+                    "explanation": row.get("explanation") or "",
+                    "is_active": row.get("is_active"),
+                }
+            )
+        return questions
+
+    def _extract_year(self, exam_date: str) -> str:
+        if len(exam_date) >= 4 and exam_date[:4].isdigit():
+            return exam_date[:4]
+        return ""
 
     def validate_exam_request(self, criteria: dict[str, Any]) -> tuple[bool, str]:
         """Validate requested auto-extraction counts against currently available questions."""

@@ -22,6 +22,9 @@ class Exam:
     total_questions: int
     exam_id: Optional[int] = None
     description: Optional[str] = None
+    year: Optional[str] = None
+    semester: Optional[str] = None
+    exam_type: Optional[str] = None
     exam_date: Optional[str] = None
     created_at: Optional[str] = None
     
@@ -36,6 +39,9 @@ class Exam:
             'exam_id': self.exam_id,
             'exam_name': self.exam_name,
             'description': self.description,
+            'year': self.year,
+            'semester': self.semester,
+            'exam_type': self.exam_type,
             'exam_date': self.exam_date,
             'target_class': self.target_class,
             'total_questions': self.total_questions,
@@ -59,6 +65,9 @@ class Exam:
             total_questions=data.get('total_questions'),
             exam_id=data.get('exam_id'),
             description=data.get('description'),
+            year=data.get('year'),
+            semester=data.get('semester'),
+            exam_type=data.get('exam_type'),
             exam_date=data.get('exam_date'),
             created_at=data.get('created_at')
         )
