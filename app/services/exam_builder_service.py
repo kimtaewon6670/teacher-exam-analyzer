@@ -62,9 +62,7 @@ class ExamBuilderService:
             ]
             selected = self._sample_questions(category_candidates, category_count, selected_ids)
             selected_questions.extend(selected)
-            summary_items.append(
-                self._build_summary_item(category, category_count, len(selected), {})
-            )
+            summary_items.append(self._build_summary_item(category, category_count, len(selected), {}))
 
         for difficulty, count in criteria.get("difficulty_counts", {}).items():
             difficulty_count = self._to_count(count)
@@ -75,9 +73,7 @@ class ExamBuilderService:
             ]
             selected = self._sample_questions(difficulty_candidates, difficulty_count, selected_ids)
             selected_questions.extend(selected)
-            summary_items.append(
-                self._build_summary_item(difficulty, difficulty_count, len(selected), {})
-            )
+            summary_items.append(self._build_summary_item(difficulty, difficulty_count, len(selected), {}))
 
         total_count = self._to_count(criteria.get("total_count", criteria.get("count", 0)))
         if total_count and len(selected_questions) < total_count:
@@ -119,11 +115,7 @@ class ExamBuilderService:
         summary_items = []
 
         for item in cart_items:
-            item_questions, item_summary = self._select_questions_for_item(
-                item,
-                criteria,
-                selected_ids,
-            )
+            item_questions, item_summary = self._select_questions_for_item(item, criteria, selected_ids)
             selected_questions.extend(item_questions)
             summary_items.append(item_summary)
 
@@ -162,6 +154,9 @@ class ExamBuilderService:
         """
         return {
             "question_types": list(self.DEFAULT_QUESTION_TYPES),
+            "sub_categories": ["전체 분류"],
+            "tags": ["전체 태그"],
+            "classes": ["1학년 1반", "1학년 2반", "1학년 3반"],
         }
 
     def validate_exam_request(self, criteria: dict[str, Any]) -> tuple[bool, str]:
@@ -305,10 +300,7 @@ class ExamBuilderService:
         try:
             return self.question_repository.read(question_id)
         except Exception:
-            return next(
-                (question for question in self._get_sample_pool() if question.question_id == question_id),
-                None,
-            )
+            return None
 
     def _deduplicate_questions(self, questions: list[Question]) -> list[Question]:
         deduplicated = []
@@ -373,6 +365,7 @@ class ExamBuilderService:
         difficulty: str | None = None,
     ) -> list[Question]:
         try:
+            repository_has_questions = self._repository_has_questions()
             if hasattr(self.question_repository, "get_questions_by_filter"):
                 candidates = self.question_repository.get_questions_by_filter(
                     category=category or criteria.get("category") or criteria.get("type"),
@@ -390,25 +383,13 @@ class ExamBuilderService:
                 )
 
             candidates = self._filter_by_common_criteria(candidates, criteria)
-            if candidates or self._repository_has_questions():
+            if candidates or repository_has_questions:
                 return candidates
         except Exception:
             pass
+        return []
 
-        return self._filter_by_common_criteria(
-            self._filter_by_category_and_difficulty(
-                self._get_sample_pool(),
-                category=category or criteria.get("category") or criteria.get("type"),
-                difficulty=difficulty or criteria.get("difficulty"),
-            ),
-            criteria,
-        )
-
-    def _filter_by_common_criteria(
-        self,
-        questions: list[Question],
-        criteria: dict[str, Any],
-    ) -> list[Question]:
+    def _filter_by_common_criteria(self, questions: list[Question], criteria: dict[str, Any]) -> list[Question]:
         sub_category = criteria.get("sub_category", "")
         tag = criteria.get("tag", "")
 
@@ -437,12 +418,7 @@ class ExamBuilderService:
             and (not difficulty or question.difficulty == difficulty)
         ]
 
-    def _sample_questions(
-        self,
-        candidates: list[Question],
-        count: int,
-        selected_ids: set[int],
-    ) -> list[Question]:
+    def _sample_questions(self, candidates: list[Question], count: int, selected_ids: set[int]) -> list[Question]:
         if count <= 0 or not candidates:
             return []
 
@@ -451,28 +427,6 @@ class ExamBuilderService:
             if question.question_id is not None:
                 selected_ids.add(question.question_id)
         return selected
-
-    def _get_sample_pool(self) -> list[Question]:
-        """DB 연결 전 샘플 문제 영역. Repository 연결 후 제거하기 쉽도록 분리했다."""
-        samples = []
-        question_id = 1
-        categories = ("어휘", "문법", "독해")
-
-        for category in categories:
-            for difficulty in self.DEFAULT_DIFFICULTIES:
-                for index in range(1, 8):
-                    samples.append(
-                        Question(
-                            question_id=question_id,
-                            question_text=f"{category} {difficulty} 샘플 문제 {index}",
-                            category=category,
-                            difficulty=difficulty,
-                            answer_text="정답",
-                        )
-                    )
-                    question_id += 1
-
-        return samples
 
     def _build_summary_item(
         self,
