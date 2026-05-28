@@ -300,10 +300,7 @@ class ExamBuilderService:
         try:
             return self.question_repository.read(question_id)
         except Exception:
-            return next(
-                (question for question in self._get_sample_pool() if question.question_id == question_id),
-                None,
-            )
+            return None
 
     def _deduplicate_questions(self, questions: list[Question]) -> list[Question]:
         deduplicated = []
@@ -368,6 +365,7 @@ class ExamBuilderService:
         difficulty: str | None = None,
     ) -> list[Question]:
         try:
+            repository_has_questions = self._repository_has_questions()
             if hasattr(self.question_repository, "get_questions_by_filter"):
                 candidates = self.question_repository.get_questions_by_filter(
                     category=category or criteria.get("category") or criteria.get("type"),
@@ -385,19 +383,11 @@ class ExamBuilderService:
                 )
 
             candidates = self._filter_by_common_criteria(candidates, criteria)
-            if candidates or self._repository_has_questions():
+            if candidates or repository_has_questions:
                 return candidates
         except Exception:
             pass
-
-        return self._filter_by_common_criteria(
-            self._filter_by_category_and_difficulty(
-                self._get_sample_pool(),
-                category=category or criteria.get("category") or criteria.get("type"),
-                difficulty=difficulty or criteria.get("difficulty"),
-            ),
-            criteria,
-        )
+        return []
 
     def _filter_by_common_criteria(self, questions: list[Question], criteria: dict[str, Any]) -> list[Question]:
         sub_category = criteria.get("sub_category", "")
@@ -437,27 +427,6 @@ class ExamBuilderService:
             if question.question_id is not None:
                 selected_ids.add(question.question_id)
         return selected
-
-    def _get_sample_pool(self) -> list[Question]:
-        samples = []
-        question_id = 1
-        categories = ("어휘", "문법", "독해")
-
-        for category in categories:
-            for difficulty in self.DEFAULT_DIFFICULTIES:
-                for index in range(1, 8):
-                    samples.append(
-                        Question(
-                            question_id=question_id,
-                            question_text=f"{category} {difficulty} 샘플 문제 {index}",
-                            category=category,
-                            difficulty=difficulty,
-                            answer_text="정답",
-                        )
-                    )
-                    question_id += 1
-
-        return samples
 
     def _build_summary_item(
         self,
