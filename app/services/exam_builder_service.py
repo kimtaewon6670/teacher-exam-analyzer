@@ -36,13 +36,98 @@ class ExamBuilderService:
         selected_questions: list[Question] = []
         selected_ids = selected_ids or set()
         summary_items = []
-        has_count_condition = False
+        category_counts = {
+            category: self._to_count(count)
+            for category, count in criteria.get("category_counts", {}).items()
+            if self._to_count(count) > 0
+        }
+        difficulty_counts = {
+            difficulty: self._to_count(count)
+            for difficulty, count in criteria.get("difficulty_counts", {}).items()
+            if self._to_count(count) > 0
+        }
+        has_count_condition = bool(category_counts or difficulty_counts)
 
-        for category, count in criteria.get("category_counts", {}).items():
-            category_count = self._to_count(count)
-            if category_count <= 0:
-                continue
-            has_count_condition = True
+        if category_counts and difficulty_counts:
+            remaining_difficulty_counts = dict(difficulty_counts)
+            for category, category_count in category_counts.items():
+                remaining_category_count = category_count
+                specified_category_count = 0
+                selected_by_difficulty: dict[str, int] = {}
+
+                for difficulty, difficulty_count in list(remaining_difficulty_counts.items()):
+                    requested_count = min(difficulty_count, remaining_category_count)
+                    if requested_count <= 0:
+                        continue
+
+                    specified_category_count += requested_count
+                    combined_candidates = [
+                        question
+                        for question in candidates
+                        if question.category == category
+                        and question.difficulty == difficulty
+                        and question.question_id not in selected_ids
+                    ]
+                    selected = self._sample_questions(
+                        combined_candidates,
+                        requested_count,
+                        selected_ids,
+                    )
+                    selected_questions.extend(selected)
+                    selected_count = len(selected)
+                    selected_by_difficulty[difficulty] = selected_count
+                    remaining_category_count -= selected_count
+                    remaining_difficulty_counts[difficulty] = max(
+                        remaining_difficulty_counts[difficulty] - requested_count,
+                        0,
+                    )
+
+                    if remaining_category_count <= 0:
+                        break
+
+                unspecified_category_count = min(
+                    max(category_count - specified_category_count, 0),
+                    remaining_category_count,
+                )
+                if unspecified_category_count > 0:
+                    category_candidates = [
+                        question
+                        for question in candidates
+                        if question.category == category and question.question_id not in selected_ids
+                    ]
+                    selected = self._sample_questions(
+                        category_candidates,
+                        unspecified_category_count,
+                        selected_ids,
+                    )
+                    selected_questions.extend(selected)
+
+                summary_items.append(
+                    self._build_summary_item(
+                        category,
+                        category_count,
+                        min(category_count, len([
+                            question
+                            for question in selected_questions
+                            if question.category == category
+                        ])),
+                        selected_by_difficulty,
+                    )
+                )
+
+            total_count = self._to_count(criteria.get("total_count", criteria.get("count", 0)))
+            requested_count = total_count or sum(category_counts.values())
+            if total_count:
+                selected_questions = selected_questions[:total_count]
+            self.last_build_summary = {
+                "requested_count": requested_count,
+                "selected_count": len(selected_questions),
+                "shortage": max(requested_count - len(selected_questions), 0),
+                "items": summary_items,
+            }
+            return selected_questions
+
+        for category, category_count in category_counts.items():
             category_candidates = [
                 question
                 for question in candidates
@@ -52,11 +137,7 @@ class ExamBuilderService:
             selected_questions.extend(selected)
             summary_items.append(self._build_summary_item(category, category_count, len(selected), {}))
 
-        for difficulty, count in criteria.get("difficulty_counts", {}).items():
-            difficulty_count = self._to_count(count)
-            if difficulty_count <= 0:
-                continue
-            has_count_condition = True
+        for difficulty, difficulty_count in difficulty_counts.items():
             difficulty_candidates = [
                 question
                 for question in candidates
@@ -339,10 +420,58 @@ class ExamBuilderService:
             return items
 
         items = []
-        for category, count in criteria.get("category_counts", {}).items():
-            items.append({"category": category, "difficulty": None, "count": count})
-        for difficulty, count in criteria.get("difficulty_counts", {}).items():
-            items.append({"category": None, "difficulty": difficulty, "count": count})
+        category_counts = {
+            category: self._to_count(count)
+            for category, count in criteria.get("category_counts", {}).items()
+            if self._to_count(count) > 0
+        }
+        difficulty_counts = {
+            difficulty: self._to_count(count)
+            for difficulty, count in criteria.get("difficulty_counts", {}).items()
+            if self._to_count(count) > 0
+        }
+        if category_counts and difficulty_counts:
+            remaining_difficulty_counts = dict(difficulty_counts)
+            for category, category_count in category_counts.items():
+                remaining_category_count = category_count
+                specified_category_count = 0
+                for difficulty, difficulty_count in list(remaining_difficulty_counts.items()):
+                    requested_count = min(difficulty_count, remaining_category_count)
+                    if requested_count <= 0:
+                        continue
+                    specified_category_count += requested_count
+                    items.append(
+                        {
+                            "category": category,
+                            "difficulty": difficulty,
+                            "count": requested_count,
+                        }
+                    )
+                    remaining_category_count -= requested_count
+                    remaining_difficulty_counts[difficulty] = max(
+                        remaining_difficulty_counts[difficulty] - requested_count,
+                        0,
+                    )
+                    if remaining_category_count <= 0:
+                        break
+
+                unspecified_count = min(
+                    max(category_count - specified_category_count, 0),
+                    remaining_category_count,
+                )
+                if unspecified_count:
+                    items.append(
+                        {
+                            "category": category,
+                            "difficulty": None,
+                            "count": unspecified_count,
+                        }
+                    )
+        else:
+            for category, count in category_counts.items():
+                items.append({"category": category, "difficulty": None, "count": count})
+            for difficulty, count in difficulty_counts.items():
+                items.append({"category": None, "difficulty": difficulty, "count": count})
         if not items and self._to_count(criteria.get("total_count", criteria.get("count", 0))):
             items.append(
                 {
