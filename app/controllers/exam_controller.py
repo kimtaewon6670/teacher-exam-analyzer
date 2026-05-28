@@ -221,7 +221,7 @@ class ExamController:
             self._show_error("삭제할 시험지를 찾을 수 없습니다.")
 
     def export_pdf(self) -> None:
-        questions = self._get_selected_view_questions()
+        questions = self._get_exam_paper_questions(self._get_selected_view_questions())
         if not questions:
             self._show_error("PDF로 출력할 문제가 없습니다.")
             return
@@ -382,21 +382,21 @@ class ExamController:
         self.selected_questions = combined_questions
 
         if hasattr(self.view, "set_auto_extracted_questions"):
-            self.view.set_auto_extracted_questions(list(self.auto_extracted_questions))
+            self.view.set_auto_extracted_questions(self._get_exam_paper_questions(self.auto_extracted_questions))
         if hasattr(self.view, "set_manual_selected_questions"):
-            self.view.set_manual_selected_questions(list(self.manual_selected_questions))
+            self.view.set_manual_selected_questions(self._get_exam_paper_questions(self.manual_selected_questions))
         if hasattr(self.view, "set_selected_question_groups"):
             self.view.set_selected_question_groups(
                 {
-                    "auto": list(self.auto_extracted_questions),
-                    "manual": list(self.manual_selected_questions),
-                    "combined": list(combined_questions),
+                    "auto": self._get_exam_paper_questions(self.auto_extracted_questions),
+                    "manual": self._get_exam_paper_questions(self.manual_selected_questions),
+                    "combined": self._get_exam_paper_questions(combined_questions),
                 }
             )
         if hasattr(self.view, "set_selected_questions"):
-            self.view.set_selected_questions(combined_questions)
+            self.view.set_selected_questions(self._get_exam_paper_questions(combined_questions))
         if hasattr(self.view, "set_preview_data"):
-            self.view.set_preview_data(combined_questions)
+            self.view.set_preview_data(self._get_exam_paper_questions(combined_questions))
 
     def _get_selected_view_questions(self) -> list[dict[str, Any]]:
         if self.auto_extracted_questions or self.manual_selected_questions:
@@ -479,6 +479,22 @@ class ExamController:
             "tags": getattr(question, "tags", "") or "",
         }
 
+    def _to_exam_paper_question(self, question: Any) -> dict[str, Any]:
+        question_data = self._to_view_question(question)
+        for key in (
+            "answer",
+            "answer_text",
+            "correct_answer",
+            "acceptable_answers",
+            "allowed_answers",
+            "explanation",
+        ):
+            question_data.pop(key, None)
+        return question_data
+
+    def _get_exam_paper_questions(self, questions: list[Any]) -> list[dict[str, Any]]:
+        return [self._to_exam_paper_question(question) for question in questions]
+
     def _get_question_id(self, question: Any) -> int | None:
         if isinstance(question, dict):
             value = question.get(
@@ -493,7 +509,7 @@ class ExamController:
             return None
 
     def _show_exam_preview(self, questions: list[Any]) -> None:
-        view_questions = [self._to_view_question(question) for question in questions]
+        view_questions = self._get_exam_paper_questions(questions)
         self.current_questions = list(view_questions)
         self.selected_questions = view_questions
 
