@@ -34,6 +34,18 @@ class ResultController:
             self.view.exam_combo.currentIndexChanged.connect(self.on_exam_changed)
         if hasattr(self.view, "class_combo"):
             self.view.class_combo.currentIndexChanged.connect(self.on_class_changed)
+        if hasattr(self.view, "student_combo"):
+            self.view.student_combo.currentIndexChanged.connect(self.on_student_changed)
+        if hasattr(self.view, "result_button"):
+            self.view.result_button.clicked.connect(self.on_result_view_clicked)
+        if hasattr(self.view, "view_result_button"):
+            self.view.view_result_button.clicked.connect(self.on_result_view_clicked)
+        if hasattr(self.view, "result_view_button"):
+            self.view.result_view_button.clicked.connect(self.on_result_view_clicked)
+        if hasattr(self.view, "grading_result_button"):
+            self.view.grading_result_button.clicked.connect(self.on_result_view_clicked)
+        if hasattr(self.view, "view_grading_result_button"):
+            self.view.view_grading_result_button.clicked.connect(self.on_result_view_clicked)
 
     def _load_initial_data(self) -> None:
         data = self.result_service.get_initial_view_data()
@@ -51,6 +63,10 @@ class ResultController:
     def on_class_changed(self) -> None:
         class_id = self._get_selected_class_id()
         self._set_student_options(self.result_service.get_students_by_class(class_id))
+        self.load_answers_for_selected_student()
+
+    def on_student_changed(self) -> None:
+        self.load_answers_for_selected_student()
 
     def on_validate_clicked(self) -> None:
         is_valid, message = self.result_service.validate_input(
@@ -61,22 +77,36 @@ class ResultController:
         self._show_message(message, is_valid)
 
     def on_save_clicked(self) -> None:
-        result = self.result_service.grade_answers(
+        result = self.result_service.save_student_answers(
             self._get_selected_exam_id(),
             self._get_selected_student_id(),
             self._get_manual_answers(),
-            save_result=True,
         )
         self._show_message(result["message"], bool(result.get("success")))
 
     def on_grade_clicked(self) -> None:
-        result = self.result_service.grade_answers(
+        manual_answers = self._get_manual_answers()
+        if manual_answers:
+            save_result = self.result_service.save_student_answers(
+                self._get_selected_exam_id(),
+                self._get_selected_student_id(),
+                manual_answers,
+            )
+            if not save_result.get("success"):
+                self._show_message(save_result["message"], False)
+                return
+
+        result = self.result_service.run_auto_grading(
             self._get_selected_exam_id(),
-            self._get_selected_student_id(),
-            self._get_manual_answers(),
-            save_result=True,
+            self._get_selected_class_id(),
         )
         self._show_message(result["message"], bool(result.get("success")))
+
+    def on_result_view_clicked(self) -> None:
+        result = self.build_grading_result_view_data()
+        if result.get("success"):
+            self._set_grading_result_data(result)
+        self._show_message(result.get("message", ""), bool(result.get("success")))
 
     def on_reset_clicked(self) -> None:
         if hasattr(self.view, "clear_form"):
@@ -113,6 +143,30 @@ class ResultController:
             self.view.set_exam_summary(self.result_service.get_exam_summary(exam_id))
         if hasattr(self.view, "set_answer_items"):
             self.view.set_answer_items(self.result_service.get_question_count(exam_id))
+        self.load_answers_for_selected_student()
+
+    def load_answers_for_selected_student(self) -> dict[int, str]:
+        answers = self.result_service.load_answers_for_student(
+            self._get_selected_exam_id(),
+            self._get_selected_student_id(),
+        )
+        self._set_manual_answers(answers)
+        return answers
+
+    def get_grading_result(self) -> dict[str, Any]:
+        return self.result_service.get_grading_result(self._get_selected_exam_id())
+
+    def get_grading_result_by_student(self, student_id: Any | None = None) -> dict[str, Any]:
+        return self.result_service.get_grading_result_by_student(
+            self._get_selected_exam_id(),
+            student_id if student_id is not None else self._get_selected_student_id(),
+        )
+
+    def build_grading_result_view_data(self, student_id: Any | None = None) -> dict[str, Any]:
+        return self.result_service.build_grading_result_view_data(
+            self._get_selected_exam_id(),
+            student_id,
+        )
 
     def _set_exam_options(self, exams: list[dict[str, Any]]) -> None:
         if hasattr(self.view, "set_exam_options"):
@@ -146,6 +200,26 @@ class ResultController:
         if hasattr(self.view, "get_manual_answers"):
             return self.view.get_manual_answers()
         return {}
+
+    def _set_manual_answers(self, answers: dict[int, str]) -> None:
+        if answers and hasattr(self.view, "set_manual_answers"):
+            self.view.set_manual_answers(answers)
+            return
+
+        if hasattr(self.view, "clear_manual_answers"):
+            self.view.clear_manual_answers()
+        elif hasattr(self.view, "clear_answers"):
+            self.view.clear_answers()
+        elif hasattr(self.view, "set_manual_answers"):
+            self.view.set_manual_answers({})
+
+    def _set_grading_result_data(self, result: dict[str, Any]) -> None:
+        if hasattr(self.view, "set_grading_result_data"):
+            self.view.set_grading_result_data(result)
+        elif hasattr(self.view, "set_result_data"):
+            self.view.set_result_data(result)
+        elif hasattr(self.view, "show_grading_result"):
+            self.view.show_grading_result(result)
 
     def _show_message(self, message: str, is_success: bool) -> None:
         if hasattr(self.view, "show_validation_message"):

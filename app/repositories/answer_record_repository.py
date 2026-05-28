@@ -82,6 +82,72 @@ class AnswerRecordRepository:
             raise
         finally:
             close_db_connection(conn)
+
+    @staticmethod
+    def replace_for_student(exam_id: int, student_id: int, records: List[AnswerRecord]) -> int:
+        """
+        Replace one student's answer records for one exam.
+
+        The delete scope is intentionally exam_id + student_id so answers from
+        other students in the same exam are never touched.
+        """
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                'DELETE FROM answer_records WHERE exam_id = ? AND student_id = ?',
+                (exam_id, student_id),
+            )
+
+            if records:
+                data = [
+                    (
+                        r.exam_id,
+                        r.student_id,
+                        r.question_id,
+                        r.student_answer,
+                        r.correct_answer,
+                        r.is_correct,
+                    )
+                    for r in records
+                ]
+                cursor.executemany('''
+                    INSERT INTO answer_records (
+                        exam_id, student_id, question_id, student_answer, correct_answer, is_correct
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', data)
+
+            conn.commit()
+            return len(records)
+
+        except sqlite3.Error as e:
+            conn.rollback()
+            print(f"??Database error: {e}")
+            raise
+        finally:
+            close_db_connection(conn)
+
+    @staticmethod
+    def delete_by_exam_and_student(exam_id: int, student_id: int) -> int:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                'DELETE FROM answer_records WHERE exam_id = ? AND student_id = ?',
+                (exam_id, student_id),
+            )
+            conn.commit()
+            return cursor.rowcount
+
+        except sqlite3.Error as e:
+            conn.rollback()
+            print(f"??Database error: {e}")
+            raise
+        finally:
+            close_db_connection(conn)
     
     @staticmethod
     def read_by_exam_and_student(exam_id: int, student_id: int) -> List[AnswerRecord]:
