@@ -493,7 +493,37 @@ class ExamController:
         return question_data
 
     def _get_exam_paper_questions(self, questions: list[Any]) -> list[dict[str, Any]]:
-        return [self._to_exam_paper_question(question) for question in questions]
+        exam_questions = []
+        for index, question in enumerate(questions, start=1):
+            question_data = self._to_exam_paper_question(question)
+            content = str(
+                question_data.get("content")
+                or question_data.get("question_text")
+                or ""
+            )
+            answer_lines = self._build_answer_lines(content)
+            question_data.update(
+                {
+                    "number": index,
+                    "question_number": index,
+                    "display_text": f"{index}. {content}",
+                    "answer_blank": answer_lines[0],
+                    "answer_lines": answer_lines,
+                    "student_answer": "",
+                    "points": question_data.get("points", ""),
+                    "exam_item_type": "question_with_blank",
+                }
+            )
+            exam_questions.append(question_data)
+        return exam_questions
+
+    def _build_answer_lines(self, content: str) -> list[str]:
+        if "____" in content or "()" in content:
+            return ["____________________________________"]
+        return [
+            "____________________________________",
+            "____________________________________",
+        ]
 
     def _get_question_id(self, question: Any) -> int | None:
         if isinstance(question, dict):
@@ -519,6 +549,12 @@ class ExamController:
             self.view.set_preview_data(view_questions)
 
         exam_data = self._get_exam_criteria()
+        preview_payload = {
+            "exam_info": exam_data,
+            "questions": view_questions,
+            "total_questions": len(view_questions),
+            "mode": "student_exam_paper",
+        }
         preview_method_names = (
             "show_exam_preview",
             "show_exam_preview_dialog",
@@ -537,7 +573,7 @@ class ExamController:
             method = getattr(self.view, method_name, None)
             if method is None:
                 continue
-            if self._call_preview_method(method, exam_data, view_questions):
+            if self._call_preview_method(method, exam_data, view_questions, preview_payload):
                 return
 
     def _call_preview_method(
@@ -545,14 +581,19 @@ class ExamController:
         method: Any,
         exam_data: dict[str, Any],
         questions: list[dict[str, Any]],
+        preview_payload: dict[str, Any] | None = None,
     ) -> bool:
         call_patterns = (
+            (preview_payload,) if preview_payload is not None else None,
+            (exam_data, questions, preview_payload) if preview_payload is not None else None,
             (exam_data, questions),
             (questions, exam_data),
             (questions,),
             (),
         )
         for args in call_patterns:
+            if args is None:
+                continue
             try:
                 method(*args)
                 return True
