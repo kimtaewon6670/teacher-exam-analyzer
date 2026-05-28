@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -27,7 +28,19 @@ class QuestionBankView(QWidget):
         self.on_status_change_question = None
         self.setObjectName("questionBankView")
 
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        root_layout.addWidget(scroll)
+
+        content = QWidget()
+        content.setMinimumWidth(1080)
+        scroll.setWidget(content)
+
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(28, 26, 28, 24)
         layout.setSpacing(16)
 
@@ -38,6 +51,7 @@ class QuestionBankView(QWidget):
         layout.addWidget(self._build_register_card())
         layout.addWidget(self._build_filter_card())
         layout.addWidget(self._build_table_card(), 1)
+        layout.addStretch()
         self.questions_data: list[dict[str, str]] = []
         self.question_list_window: QuestionListDialog | None = None
 

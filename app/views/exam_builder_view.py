@@ -60,6 +60,7 @@ class ExamBuilderView(QWidget):
         root_layout.addWidget(scroll)
 
         content = QWidget()
+        content.setMinimumWidth(1120)
         scroll.setWidget(content)
         layout = QVBoxLayout(content)
         layout.setContentsMargins(28, 26, 28, 24)
