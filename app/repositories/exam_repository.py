@@ -205,6 +205,14 @@ class ExamRepository:
         cursor = conn.cursor()
         
         try:
+            cursor.execute('SELECT 1 FROM exams WHERE exam_id = ?', (exam_id,))
+            if cursor.fetchone() is None:
+                print(f"??No exam found with ID: {exam_id}")
+                return False
+
+            cursor.execute('DELETE FROM answer_records WHERE exam_id = ?', (exam_id,))
+            cursor.execute('DELETE FROM exam_results WHERE exam_id = ?', (exam_id,))
+            cursor.execute('DELETE FROM exam_questions WHERE exam_id = ?', (exam_id,))
             cursor.execute('DELETE FROM exams WHERE exam_id = ?', (exam_id,))
             
             conn.commit()
