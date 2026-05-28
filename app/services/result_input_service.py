@@ -83,6 +83,19 @@ class ResultInputService:
         except Exception:
             pass
 
+        normalized_class_id = self._normalize_class_name(class_id)
+        try:
+            students = [
+                student
+                for student in self.student_repository.read_all(active_only=True)
+                if self._normalize_class_name(student.class_name) == normalized_class_id
+            ]
+            if students:
+                students.sort(key=lambda student: str(student.student_number))
+                return [self._student_to_option(student) for student in students]
+        except Exception:
+            pass
+
         return []
 
     def validate_input(
@@ -273,7 +286,9 @@ class ResultInputService:
 
         for student in students:
             class_id = student.get("class_id")
-            if class_id and class_id not in class_ids:
+            if class_id and self._normalize_class_name(class_id) not in {
+                self._normalize_class_name(existing_class_id) for existing_class_id in class_ids
+            }:
                 class_ids.append(class_id)
 
         if class_ids:
@@ -330,3 +345,6 @@ class ResultInputService:
             return int(value)
         except (TypeError, ValueError):
             return default
+
+    def _normalize_class_name(self, value: Any) -> str:
+        return str(value or "").replace(" ", "").strip()

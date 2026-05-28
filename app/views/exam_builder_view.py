@@ -39,6 +39,7 @@ class ExamBuilderView(QWidget):
     auto_selection_clear_requested = Signal()
     manual_selection_clear_requested = Signal()
     exam_delete_requested = Signal(object)
+    exam_view_requested = Signal(object)
 
     def __init__(self) -> None:
         super().__init__()
@@ -270,6 +271,11 @@ class ExamBuilderView(QWidget):
             self.generated_exams_table.setCellWidget(
                 row_index,
                 6,
+                self._make_table_button_cell("보기", lambda checked=False, eid=exam_id: self._view_generated_exam(eid)),
+            )
+            self.generated_exams_table.setCellWidget(
+                row_index,
+                7,
                 self._make_table_button_cell("삭제", lambda checked=False, eid=exam_id: self._delete_generated_exam(eid)),
             )
             self.generated_exams_table.setRowHeight(row_index, 38)
@@ -338,6 +344,75 @@ class ExamBuilderView(QWidget):
             """
         )
         dialog.exec()
+
+    def show_generated_exams_window(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("생성된 시험지 목록")
+        dialog.resize(1100, 700)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 22, 24, 24)
+        layout.setSpacing(14)
+
+        title = QLabel("생성된 시험지 목록")
+        title.setObjectName("dialogTitle")
+        layout.addWidget(title)
+
+        table = QTableWidget(0, 8)
+        table.setHorizontalHeaderLabels(["순번", "시험명", "대상 반", "시험 일자", "문항 수", "상태", "보기", "삭제"])
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+        table.setColumnWidth(1, 360)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setSelectionMode(QTableWidget.NoSelection)
+        layout.addWidget(table, 1)
+
+        table.setRowCount(len(self.generated_exams))
+        for row_index, exam in enumerate(self.generated_exams):
+            values = [
+                str(row_index + 1),
+                str(exam.get("exam_name", "")),
+                str(exam.get("class_name", "")),
+                str(exam.get("exam_date", "")),
+                str(exam.get("question_count", "")),
+                str(exam.get("status", "")),
+            ]
+            for column_index, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                alignment = Qt.AlignLeft | Qt.AlignVCenter if column_index == 1 else Qt.AlignCenter
+                item.setTextAlignment(alignment)
+                table.setItem(row_index, column_index, item)
+
+            exam_id = exam.get("exam_id")
+            table.setCellWidget(
+                row_index,
+                6,
+                self._make_table_button_cell("보기", lambda checked=False, eid=exam_id: self._view_generated_exam(eid)),
+            )
+            table.setCellWidget(
+                row_index,
+                7,
+                self._make_table_button_cell("삭제", lambda checked=False, eid=exam_id: self._delete_generated_exam(eid)),
+            )
+            table.setRowHeight(row_index, 38)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(dialog.reject)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+        dialog.setStyleSheet(self._dialog_table_stylesheet())
+        dialog.exec()
+
+    def show_generated_exam_detail(self, exam: dict[str, object], questions: list[dict[str, object]]) -> None:
+        self.show_exam_preview(
+            {
+                "exam_name": exam.get("exam_name", "시험지"),
+                "class_name": exam.get("class_name", "-"),
+                "exam_date": exam.get("exam_date", "-"),
+            },
+            questions,
+        )
 
     def select_questions_from_list(self, questions: list[dict[str, object]]) -> list[dict[str, object]]:
         dialog = QDialog(self)
@@ -527,21 +602,6 @@ class ExamBuilderView(QWidget):
         list_row.addWidget(manual_card, 1)
         layout.addLayout(list_row)
 
-        action_card = self._make_card("시험지 문제 구성")
-        action_layout = action_card.layout()
-        action_row = QHBoxLayout()
-        action_row.addStretch()
-        full_view_button = QPushButton("전체 보기")
-        full_view_button.setFixedWidth(100)
-        full_view_button.clicked.connect(self._open_selected_questions_window)
-        generate_button = QPushButton("생성")
-        generate_button.setObjectName("primaryButton")
-        generate_button.setFixedWidth(120)
-        generate_button.clicked.connect(self._combine_question_sources)
-        action_row.addWidget(full_view_button)
-        action_row.addWidget(generate_button)
-        action_layout.addLayout(action_row)
-        layout.addWidget(action_card)
         return workspace
 
     def _build_question_source_card(
@@ -638,9 +698,9 @@ class ExamBuilderView(QWidget):
         card.setMinimumHeight(170)
         layout = card.layout()
 
-        self.generated_exams_table = QTableWidget(0, 7)
+        self.generated_exams_table = QTableWidget(0, 8)
         self.generated_exams_table.setHorizontalHeaderLabels(
-            ["순번", "시험명", "대상 반", "시험 일자", "문항 수", "상태", "삭제"]
+            ["순번", "시험명", "대상 반", "시험 일자", "문항 수", "상태", "보기", "삭제"]
         )
         self.generated_exams_table.verticalHeader().setVisible(False)
         self.generated_exams_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -649,6 +709,14 @@ class ExamBuilderView(QWidget):
         self.generated_exams_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.generated_exams_table.setSelectionMode(QTableWidget.NoSelection)
         layout.addWidget(self.generated_exams_table, 1)
+
+        header = QHBoxLayout()
+        header.addStretch()
+        full_view_button = QPushButton("전체 보기")
+        full_view_button.setFixedWidth(100)
+        full_view_button.clicked.connect(self.show_generated_exams_window)
+        header.addWidget(full_view_button)
+        layout.insertLayout(1, header)
         return card
 
     def _build_output_action_card(self) -> QFrame:
@@ -833,6 +901,9 @@ class ExamBuilderView(QWidget):
     def _delete_generated_exam(self, exam_id: object) -> None:
         self.exam_delete_requested.emit(exam_id)
 
+    def _view_generated_exam(self, exam_id: object) -> None:
+        self.exam_view_requested.emit(exam_id)
+
     def _build_exam_preview_text(self, questions: list[dict[str, object]]) -> str:
         lines = []
         for index, question in enumerate(questions, start=1):
@@ -843,6 +914,36 @@ class ExamBuilderView(QWidget):
                 lines.append(f"   정답: {answer}")
             lines.append("")
         return "\n".join(lines).strip()
+
+    def _dialog_table_stylesheet(self) -> str:
+        return """
+            QDialog {
+                background: #f4f7fb;
+                color: #172033;
+                font-family: "Malgun Gothic", "Segoe UI", Arial;
+            }
+            #dialogTitle {
+                color: #18263a;
+                font-size: 24px;
+                font-weight: 800;
+            }
+            QTableWidget {
+                background: white;
+                border: 1px solid #dfe6ef;
+                border-radius: 6px;
+                color: #233348;
+                gridline-color: #e6ecf3;
+            }
+            QHeaderView::section {
+                background: #f7f9fc;
+                border: 0;
+                border-right: 1px solid #e2e8f0;
+                border-bottom: 1px solid #e2e8f0;
+                color: #2a3a50;
+                font-weight: 800;
+                padding: 9px;
+            }
+        """
 
     def _make_card(self, title: str) -> QFrame:
         card = QFrame()

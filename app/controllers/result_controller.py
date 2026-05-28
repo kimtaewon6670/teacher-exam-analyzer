@@ -39,8 +39,11 @@ class ResultController:
         data = self.result_service.get_initial_view_data()
         self._set_exam_options(data.get("exams", []))
         self._set_class_options(data.get("classes", []))
-        self._set_student_options(data.get("students", []))
+        self._set_student_options(self.result_service.get_students_by_class(self._get_selected_class_id()))
         self._refresh_exam_context()
+
+    def refresh_options(self) -> None:
+        self._load_initial_data()
 
     def on_exam_changed(self) -> None:
         self._refresh_exam_context()
