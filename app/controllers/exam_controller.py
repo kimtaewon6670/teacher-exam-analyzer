@@ -51,6 +51,15 @@ class ExamController:
             self.view.remove_cart_button.clicked.connect(self.on_remove_cart_clicked)
         if hasattr(self.view, "clear_cart_button"):
             self.view.clear_cart_button.clicked.connect(self.on_clear_cart_clicked)
+        for button_name in (
+            "preview_button",
+            "exam_preview_button",
+            "preview_exam_button",
+            "preview_btn",
+        ):
+            button = getattr(self.view, button_name, None)
+            if button is not None and hasattr(button, "clicked"):
+                button.clicked.connect(self.preview_exam)
 
         self._connect_count_limit_events()
 
@@ -89,12 +98,13 @@ class ExamController:
 
     def auto_extract_questions(self) -> None:
         criteria = self._build_service_criteria()
-        criteria["selected_question_ids"] = self._get_selected_question_ids()
-        criteria["selected_questions"] = self._get_selected_view_questions()
         if criteria["total_count"] <= 0:
             self._show_error("추출할 문항 수를 입력해주세요.")
             return
 
+        self._clear_selected_questions()
+        criteria["selected_question_ids"] = []
+        criteria["selected_questions"] = []
         self.current_questions = self.builder_service.create_random_exam(criteria)
         self._set_selected_questions(self.current_questions)
 
@@ -262,8 +272,7 @@ class ExamController:
                 )
 
     def on_clear_selection_clicked(self) -> None:
-        self.current_questions = []
-        self._set_selected_questions([])
+        self._clear_selected_questions()
 
     def on_question_exclude_requested(self, question_id: Any) -> None:
         try:
@@ -402,6 +411,14 @@ class ExamController:
             self.view.set_selected_questions(view_questions)
         if hasattr(self.view, "set_preview_data"):
             self.view.set_preview_data(view_questions)
+
+    def _clear_selected_questions(self) -> None:
+        self.current_questions = []
+        self.selected_questions = []
+        if hasattr(self.view, "set_selected_questions"):
+            self.view.set_selected_questions([])
+        if hasattr(self.view, "set_preview_data"):
+            self.view.set_preview_data([])
 
     def _get_selected_view_questions(self) -> list[dict[str, Any]]:
         view_selected = getattr(self.view, "selected_questions", None)
