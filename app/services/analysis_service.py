@@ -535,7 +535,9 @@ class AnalysisService:
     ) -> dict[str, Any]:
         student_count = len({result.student_id for result in results})
         average_score = self._average([float(result.score or 0) for result in results])
-        if answer_records:
+        if results:
+            correct_rate, wrong_rate = self._result_correct_wrong_rates(results)
+        elif answer_records:
             correct_rate = self._answer_record_correct_rate(answer_records)
             wrong_rate = self._answer_record_wrong_rate(answer_records)
         else:
@@ -562,8 +564,12 @@ class AnalysisService:
             empty_label="미분류",
         )
 
-        weak_type = self._weakest_label(type_rows, "type")
-        feedback = self._build_feedback(type_rows, sub_category_rows, difficulty_rows, question_rows)
+        if correct_rate >= 100 and wrong_rate <= 0:
+            weak_type = ""
+            feedback = ""
+        else:
+            weak_type = self._weakest_label(type_rows, "type")
+            feedback = self._build_feedback(type_rows, sub_category_rows, difficulty_rows, question_rows)
 
         return {
             "summary": {
@@ -716,6 +722,22 @@ class AnalysisService:
             return 0.0
         wrong_count = sum(1 for record in records if record.is_correct != CORRECT)
         return (wrong_count / len(records)) * 100
+
+    def _result_correct_wrong_rates(self, results: list[Any]) -> tuple[float, float]:
+        total_correct = sum(int(getattr(result, "correct_count", 0) or 0) for result in results)
+        total_wrong = sum(int(getattr(result, "wrong_count", 0) or 0) for result in results)
+        total_answered = total_correct + total_wrong
+        if total_answered > 0:
+            return (
+                self._percent(total_correct, total_answered),
+                self._percent(total_wrong, total_answered),
+            )
+
+        correct_rate = self._average([
+            self._normalize_percent(getattr(result, "accuracy", 0))
+            for result in results
+        ])
+        return correct_rate, max(100 - correct_rate, 0)
 
     def _normalize_percent(self, value: Any) -> float:
         number = float(value or 0)
