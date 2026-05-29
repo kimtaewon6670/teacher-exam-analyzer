@@ -32,6 +32,7 @@ class ExamBuilderView(QWidget):
     selection_clear_requested = Signal()
     preview_requested = Signal()
     pdf_export_requested = Signal()
+    exam_pdf_export_requested = Signal(object)
     save_exam_requested = Signal()
     question_exclude_requested = Signal(object)
     auto_question_exclude_requested = Signal(object)
@@ -359,8 +360,8 @@ class ExamBuilderView(QWidget):
         title.setObjectName("dialogTitle")
         layout.addWidget(title)
 
-        table = QTableWidget(0, 8)
-        table.setHorizontalHeaderLabels(["순번", "시험명", "대상 반", "시험 일자", "문항 수", "상태", "보기", "삭제"])
+        table = QTableWidget(0, 9)
+        table.setHorizontalHeaderLabels(["순번", "시험명", "대상 반", "시험 일자", "문항 수", "상태", "보기", "PDF 출력", "삭제"])
         table.verticalHeader().setVisible(False)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
@@ -394,6 +395,14 @@ class ExamBuilderView(QWidget):
             table.setCellWidget(
                 row_index,
                 7,
+                self._make_table_button_cell(
+                    "PDF",
+                    lambda checked=False, eid=exam_id: self.exam_pdf_export_requested.emit(eid),
+                ),
+            )
+            table.setCellWidget(
+                row_index,
+                8,
                 self._make_table_button_cell("삭제", lambda checked=False, eid=exam_id: self._delete_generated_exam(eid)),
             )
             table.setRowHeight(row_index, 38)
