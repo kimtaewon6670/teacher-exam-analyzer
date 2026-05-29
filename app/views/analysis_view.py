@@ -3,6 +3,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -25,6 +27,7 @@ class AnalysisView(QWidget):
         self._exam_ids: list[object] = []
         self._class_ids: list[object] = []
         self._summary_value_labels: dict[str, QLabel] = {}
+        self._question_analysis_rows: list[dict[str, object]] = []
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -98,7 +101,8 @@ class AnalysisView(QWidget):
                 background: #f7f9fc;
                 border: 1px dashed #cbd6e2;
                 border-radius: 8px;
-                padding: 18px;
+                padding: 20px;
+                min-height: 128px;
             }
             QComboBox {
                 background: white;
@@ -180,14 +184,9 @@ class AnalysisView(QWidget):
                 value_label.setText(str(summary.get(key, "-")))
 
     def set_question_analysis_data(self, rows: list[dict[str, object]]) -> None:
-        self._fill_table(
-            self.question_table,
-            rows,
-            ["question_number", "content", "type", "sub_category", "difficulty", "correct_rate", "wrong_rate"],
-        )
+        self._question_analysis_rows = list(rows)
 
     def set_type_analysis_data(self, rows: list[dict[str, object]]) -> None:
-        self._fill_table(self.type_table, rows, ["type", "correct_rate", "wrong_rate"])
         weakest = min(rows, key=lambda row: float(row.get("correct_rate", 100)), default={})
         self.type_graph_label.setText(self._build_rate_graph(rows, "type", f"가장 낮은 유형: {weakest.get('type', '-')}"))
 
@@ -199,7 +198,6 @@ class AnalysisView(QWidget):
         )
 
     def set_difficulty_analysis_data(self, rows: list[dict[str, object]]) -> None:
-        self._fill_table(self.difficulty_table, rows, ["difficulty", "correct_rate", "wrong_rate"])
         self.difficulty_graph_label.setText(self._build_rate_graph(rows, "difficulty", "난이도별 정답률"))
 
     def set_weakness_summary(self, data: dict[str, object]) -> None:
@@ -208,7 +206,8 @@ class AnalysisView(QWidget):
     def clear_analysis(self) -> None:
         for value_label in self._summary_value_labels.values():
             value_label.setText("-")
-        for table in [self.question_table, self.type_table, self.sub_category_table, self.difficulty_table]:
+        self._question_analysis_rows = []
+        for table in [self.sub_category_table]:
             table.setRowCount(0)
         self.set_weakness_summary({})
 
@@ -263,22 +262,20 @@ class AnalysisView(QWidget):
     def _build_question_analysis_card(self) -> QFrame:
         card = self._make_card("문항별 정답률/오답률 분석")
         layout = card.layout()
-        self.question_table = QTableWidget(0, 7)
-        self.question_table.setHorizontalHeaderLabels(["문항 번호", "문제 내용", "문제 유형", "세부 분류", "난이도", "정답률", "오답률"])
-        self._setup_table(self.question_table)
-        self.question_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
-        self.question_table.setColumnWidth(1, 360)
-        layout.addWidget(self.question_table)
+        header = QHBoxLayout()
+        header.addStretch()
+        view_button = QPushButton("보기")
+        view_button.setFixedWidth(86)
+        view_button.clicked.connect(self._open_question_analysis_window)
+        header.addWidget(view_button)
+        layout.addLayout(header)
         return card
 
     def _build_type_analysis_card(self) -> QFrame:
         card = self._make_card("문제 유형별 정답률 분석")
+        card.setMinimumHeight(240)
         layout = card.layout()
-        self.type_table = QTableWidget(0, 3)
-        self.type_table.setHorizontalHeaderLabels(["유형", "정답률", "오답률"])
-        self._setup_table(self.type_table)
         self.type_graph_label = self._make_graph_placeholder()
-        layout.addWidget(self.type_table)
         layout.addWidget(self.type_graph_label)
         return card
 
@@ -295,12 +292,9 @@ class AnalysisView(QWidget):
 
     def _build_difficulty_analysis_card(self) -> QFrame:
         card = self._make_card("난이도별 정답률 분석")
+        card.setMinimumHeight(240)
         layout = card.layout()
-        self.difficulty_table = QTableWidget(0, 3)
-        self.difficulty_table.setHorizontalHeaderLabels(["난이도", "정답률", "오답률"])
-        self._setup_table(self.difficulty_table)
         self.difficulty_graph_label = self._make_graph_placeholder()
-        layout.addWidget(self.difficulty_table)
         layout.addWidget(self.difficulty_graph_label)
         return card
 
@@ -335,7 +329,8 @@ class AnalysisView(QWidget):
         label = QLabel("그래프 placeholder")
         label.setObjectName("graphPlaceholder")
         label.setAlignment(Qt.AlignCenter)
-        label.setMinimumHeight(96)
+        label.setMinimumHeight(132)
+        label.setWordWrap(False)
         return label
 
     def _setup_table(self, table: QTableWidget) -> None:
@@ -361,13 +356,46 @@ class AnalysisView(QWidget):
         lines = [title]
         for row in rows:
             label = str(row.get(label_key, "-"))
+            if len(label) > 10:
+                label = f"{label[:9]}..."
             try:
                 rate = float(row.get("correct_rate", 0))
             except (TypeError, ValueError):
                 rate = 0
-            bar = "█" * max(1, int(rate // 10)) if rate > 0 else "-"
-            lines.append(f"{label:<8} {bar} {rate:.1f}%")
+            bar = "#" * max(1, int(rate // 8)) if rate > 0 else "-"
+            lines.append(f"{label:<10} {bar:<13} {rate:.1f}%")
         return "\n".join(lines)
+
+    def _open_question_analysis_window(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("문항별 정답률/오답률 분석")
+        dialog.resize(1280, 720)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 22, 24, 24)
+        layout.setSpacing(14)
+
+        title = QLabel("문항별 정답률/오답률 분석")
+        title.setObjectName("pageTitle")
+        layout.addWidget(title)
+
+        table = QTableWidget(0, 7)
+        table.setHorizontalHeaderLabels(["문항 번호", "문제 내용", "문제 유형", "세부 분류", "난이도", "정답률", "오답률"])
+        self._setup_table(table)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+        table.setColumnWidth(1, 460)
+        self._fill_table(
+            table,
+            self._question_analysis_rows,
+            ["question_number", "content", "type", "sub_category", "difficulty", "correct_rate", "wrong_rate"],
+        )
+        layout.addWidget(table, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.setStyleSheet(self.styleSheet())
+        dialog.exec()
 
     def _get_selected_id(self, ids: list[object], index: int) -> object | None:
         if 0 <= index < len(ids):
