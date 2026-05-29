@@ -140,6 +140,8 @@ class MainWindow(QMainWindow):
     def _on_page_changed(self, index: int) -> None:
         if index == 4 and self.result_controller is not None:
             self.result_controller.refresh_options()
+        if index == 5 and self.analysis_controller is not None:
+            self.analysis_controller.refresh_options()
 
 
 class Sidebar(QFrame):
