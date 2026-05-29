@@ -145,6 +145,167 @@ class ResultInputService:
     ) -> dict[str, Any]:
         return self.grade_answers(exam_id, student_id, answers, save_result=True)
 
+    def build_csv_answer_payload(
+        self,
+        exam_id: Any,
+        class_id: Any,
+        rows: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        if exam_id in (None, ""):
+            return {"success": False, "message": "시험을 선택해 주세요.", "students": []}
+        if not rows:
+            return {"success": False, "message": "CSV 답안 데이터가 없습니다.", "students": []}
+
+        question_count = self.get_question_count(exam_id)
+        if question_count <= 0:
+            return {
+                "success": False,
+                "message": "선택한 시험에 저장된 문항이 없습니다.",
+                "students": [],
+            }
+
+        students = self.get_students_by_class(class_id)
+        students_by_number = {
+            self._normalize_student_number(student.get("student_id")): student
+            for student in students
+            if self._normalize_student_number(student.get("student_id"))
+        }
+
+        matched_students = []
+        unmatched_rows = []
+        for row in rows:
+            student_number = self._extract_csv_student_number(row)
+            student = students_by_number.get(self._normalize_student_number(student_number))
+            if not student:
+                unmatched_rows.append({"student_number": student_number, "row": row})
+                continue
+
+            matched_students.append(
+                {
+                    "exam_id": exam_id,
+                    "student_id": student.get("id"),
+                    "student_number": student.get("student_id"),
+                    "student_name": student.get("name"),
+                    "class_id": student.get("class_id"),
+                    "answers": self._extract_csv_answer_map(row, question_count),
+                }
+            )
+
+        if not matched_students:
+            return {
+                "success": False,
+                "message": "CSV의 학번과 현재 반의 학생을 매칭하지 못했습니다.",
+                "students": [],
+                "unmatched": unmatched_rows,
+            }
+
+        return {
+            "success": True,
+            "message": f"CSV 답안 {len(matched_students)}명을 불러왔습니다.",
+            "students": matched_students,
+            "unmatched": unmatched_rows,
+            "total_questions": question_count,
+        }
+
+    def validate_csv_answers(
+        self,
+        exam_id: Any,
+        class_id: Any,
+        rows: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        payload = self.build_csv_answer_payload(exam_id, class_id, rows)
+        if not payload.get("success"):
+            return payload
+        if payload.get("unmatched"):
+            return {
+                "success": False,
+                "message": "CSV 학번과 현재 반 학생이 매칭되지 않는 행이 있습니다.",
+                "unmatched": payload.get("unmatched", []),
+                "students_count": len(payload.get("students", [])),
+                "total_questions": payload.get("total_questions", 0),
+            }
+
+        question_count = self._to_int(payload.get("total_questions"), 0)
+        missing = []
+        for student in payload.get("students", []):
+            answers = self._normalize_answer_map(student.get("answers", {}))
+            missing_questions = [
+                number
+                for number in range(1, question_count + 1)
+                if not answers.get(number)
+            ]
+            if missing_questions:
+                missing.append(
+                    {
+                        "student_id": student.get("student_id"),
+                        "student_number": student.get("student_number"),
+                        "student_name": student.get("student_name"),
+                        "questions": missing_questions,
+                    }
+                )
+
+        if missing:
+            return {
+                "success": False,
+                "message": "미입력 문항이 있습니다.",
+                "missing": missing,
+                "students_count": len(payload.get("students", [])),
+                "total_questions": question_count,
+            }
+
+        return {
+            "success": True,
+            "message": "입력값 검증이 완료되었습니다.",
+            "students_count": len(payload.get("students", [])),
+            "total_questions": question_count,
+            "students": payload.get("students", []),
+        }
+
+    def save_csv_answers(
+        self,
+        exam_id: Any,
+        class_id: Any,
+        rows: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        validation = self.validate_csv_answers(exam_id, class_id, rows)
+        if not validation.get("success"):
+            return validation
+
+        saved = []
+        failed = []
+        for student in validation.get("students", []):
+            result = self.save_student_answers(
+                exam_id,
+                student.get("student_id"),
+                student.get("answers", {}),
+            )
+            if result.get("success"):
+                saved.append(student)
+            else:
+                failed.append(
+                    {
+                        "student_id": student.get("student_id"),
+                        "student_number": student.get("student_number"),
+                        "student_name": student.get("student_name"),
+                        "message": result.get("message", ""),
+                    }
+                )
+
+        if failed:
+            return {
+                "success": False,
+                "message": "일부 CSV 답안을 저장하지 못했습니다.",
+                "saved_count": len(saved),
+                "failed": failed,
+            }
+
+        return {
+            "success": True,
+            "message": f"CSV 답안 저장 완료: {len(saved)}명",
+            "saved_count": len(saved),
+            "students": saved,
+        }
+
     def validate_input(
         self,
         exam_id: Any,
@@ -577,24 +738,77 @@ class ResultInputService:
             normalized[key] = str(answer or "").strip()
         return normalized
 
+    def _extract_csv_student_number(self, row: dict[str, Any]) -> str:
+        for key in ("student_id", "student_number", "student_no", "studentno", "학번"):
+            value = row.get(key)
+            if value not in (None, ""):
+                return str(value).strip()
+
+        for key, value in row.items():
+            if self._csv_question_number_from_key(key) is None and value not in (None, ""):
+                return str(value).strip()
+
+        return ""
+
+    def _extract_csv_answer_map(
+        self,
+        row: dict[str, Any],
+        question_count: int,
+    ) -> dict[int, str]:
+        answers: dict[int, str] = {}
+        for key, value in row.items():
+            question_number = self._csv_question_number_from_key(key)
+            if question_number is None:
+                continue
+            if 1 <= question_number <= question_count:
+                answers[question_number] = str(value or "").strip()
+        return answers
+
+    def _csv_question_number_from_key(self, key: Any) -> int | None:
+        clean_key = str(key or "").strip().lstrip("\ufeff")
+        lower_key = clean_key.lower().replace(" ", "").replace("_", "")
+
+        if lower_key.isdigit():
+            return int(lower_key)
+        if lower_key.startswith("q") and lower_key[1:].isdigit():
+            return int(lower_key[1:])
+        if lower_key.startswith("question") and lower_key[8:].isdigit():
+            return int(lower_key[8:])
+        if lower_key.startswith("문항") and lower_key[2:].isdigit():
+            return int(lower_key[2:])
+        if lower_key.endswith("번") and lower_key[:-1].isdigit():
+            return int(lower_key[:-1])
+        return None
+
+    def _normalize_student_number(self, value: Any) -> str:
+        return str(value or "").strip().replace(" ", "")
+
     def _normalize_csv_row(self, row: dict[str, str]) -> dict[str, str]:
         normalized = {}
         for key, value in row.items():
-            clean_key = str(key or "").strip()
+            clean_key = str(key or "").strip().lstrip("\ufeff")
             clean_value = str(value or "").strip()
             lower_key = clean_key.lower().replace(" ", "")
-            if lower_key in {"학번", "studentnumber", "student_no", "studentno"}:
+            if lower_key in {
+                "학번",
+                "studentid",
+                "student_id",
+                "studentnumber",
+                "student_no",
+                "studentno",
+            }:
                 normalized["student_id"] = clean_value
                 continue
-            if lower_key.startswith("문항") and lower_key.endswith("번"):
-                number = lower_key.removeprefix("문항").removesuffix("번")
-                if number.isdigit():
-                    normalized[f"q{number}"] = clean_value
-                    continue
-            if lower_key.endswith("번") and lower_key[:-1].isdigit():
-                normalized[f"q{lower_key[:-1]}"] = clean_value
+            question_number = self._csv_question_number_from_key(clean_key)
+            if question_number is not None:
+                normalized[f"q{question_number}"] = clean_value
                 continue
             normalized[clean_key] = clean_value
+        if "student_id" not in normalized:
+            for key, value in normalized.items():
+                if self._csv_question_number_from_key(key) is None:
+                    normalized["student_id"] = value
+                    break
         return normalized
 
     def _to_int(self, value: Any, default: int = 0) -> int:
