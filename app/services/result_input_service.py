@@ -12,7 +12,6 @@ from app.repositories.exam_repository import ExamRepository
 from app.repositories.question_repository import QuestionRepository
 from app.repositories.result_repository import ResultRepository
 from app.repositories.student_repository import StudentRepository
-from app.services.grading_service import GradingService
 from app.utils.answer_normalizer import AnswerNormalizer
 from app.utils.constants import CORRECT, WRONG
 
@@ -37,6 +36,7 @@ class ResultInputService:
         self.question_repository = question_repository
         self.result_repository = result_repository
         self.answer_record_repository = answer_record_repository
+        self._answer_input_state: dict[str, Any] = {}
 
     def get_initial_view_data(self) -> dict[str, list[dict[str, Any]]]:
         """Return option data for the result input View."""
@@ -97,6 +97,53 @@ class ResultInputService:
             pass
 
         return []
+
+    def clear_answer_input_state(self) -> None:
+        self._answer_input_state = {}
+
+    def get_student_answers(self, exam_id: Any, student_id: Any) -> dict[int, str]:
+        if exam_id in (None, "") or student_id in (None, ""):
+            return {}
+
+        try:
+            exam_id_int = int(exam_id)
+            student_id_int = int(student_id)
+        except (TypeError, ValueError):
+            return {}
+
+        try:
+            records = self.answer_record_repository.read_by_exam_and_student(
+                exam_id_int,
+                student_id_int,
+            )
+        except Exception:
+            return {}
+
+        question_order = self._get_question_order_map(exam_id_int)
+        answers: dict[int, str] = {}
+        for record in records:
+            question_number = question_order.get(record.question_id)
+            if question_number is not None:
+                answers[question_number] = record.student_answer or ""
+
+        self._answer_input_state = {
+            "exam_id": exam_id_int,
+            "student_id": student_id_int,
+            "answers": dict(answers),
+        }
+        return answers
+
+    def load_answers_for_student(self, exam_id: Any, student_id: Any) -> dict[int, str]:
+        self.clear_answer_input_state()
+        return self.get_student_answers(exam_id, student_id)
+
+    def save_student_answers(
+        self,
+        exam_id: Any,
+        student_id: Any,
+        answers: dict[Any, Any],
+    ) -> dict[str, Any]:
+        return self.grade_answers(exam_id, student_id, answers, save_result=True)
 
     def validate_input(
         self,
@@ -195,19 +242,27 @@ class ResultInputService:
 
         saved = False
         if save_result and not self._is_sample_question_specs(question_specs):
-            if self.result_repository.read_by_exam_and_student(int(exam_id), int(student_id)):
-                return {
-                    "success": False,
-                    "message": "이미 저장된 시험 결과가 있습니다.",
-                    "result": result,
-                    "details": detail_rows,
-                }
-            question_id_answers = {
-                int(spec["question_id"]): normalized_answers.get(question_number, "")
-                for question_number, spec in enumerate(question_specs, start=1)
-            }
             try:
-                result = GradingService.grade_exam(int(exam_id), int(student_id), question_id_answers)
+                if hasattr(self.result_repository, "replace_for_student"):
+                    self.result_repository.replace_for_student(result)
+                else:
+                    if hasattr(self.result_repository, "delete_by_exam_and_student"):
+                        self.result_repository.delete_by_exam_and_student(int(exam_id), int(student_id))
+                    result.result_id = self.result_repository.create(result)
+
+                if hasattr(self.answer_record_repository, "replace_for_student"):
+                    self.answer_record_repository.replace_for_student(
+                        int(exam_id),
+                        int(student_id),
+                        answer_records,
+                    )
+                else:
+                    if hasattr(self.answer_record_repository, "delete_by_exam_and_student"):
+                        self.answer_record_repository.delete_by_exam_and_student(
+                            int(exam_id),
+                            int(student_id),
+                        )
+                    self.answer_record_repository.create_batch(answer_records)
             except Exception as exc:
                 return {
                     "success": False,
@@ -216,6 +271,11 @@ class ResultInputService:
                     "details": detail_rows,
                 }
             saved = True
+            self._answer_input_state = {
+                "exam_id": int(exam_id),
+                "student_id": int(student_id),
+                "answers": dict(normalized_answers),
+            }
 
         message_prefix = "채점 및 저장 완료" if saved else "채점 완료"
         return {
@@ -227,6 +287,128 @@ class ResultInputService:
             "result": result,
             "details": detail_rows,
             "saved": saved,
+        }
+
+    def run_auto_grading(self, exam_id: Any, class_id: Any = None) -> dict[str, Any]:
+        if exam_id in (None, ""):
+            return {"success": False, "message": "시험을 선택해 주세요.", "results": []}
+
+        try:
+            exam_id_int = int(exam_id)
+        except (TypeError, ValueError):
+            return {"success": False, "message": "시험 ID가 올바르지 않습니다.", "results": []}
+
+        students = self.get_students_by_class(class_id)
+        graded_results = []
+        failed_results = []
+
+        for student in students:
+            student_id = student.get("id")
+            saved_answers = self.get_student_answers(exam_id_int, student_id)
+            if not saved_answers:
+                continue
+
+            result = self.grade_answers(exam_id_int, student_id, saved_answers, save_result=True)
+            if result.get("success"):
+                graded_results.append(result)
+            else:
+                failed_results.append({"student_id": student_id, "message": result.get("message", "")})
+
+        if not graded_results:
+            return {
+                "success": False,
+                "message": "채점할 학생 답안이 없습니다.",
+                "results": [],
+                "failed": failed_results,
+            }
+
+        return {
+            "success": True,
+            "message": f"자동 채점 완료: {len(graded_results)}명",
+            "results": graded_results,
+            "failed": failed_results,
+        }
+
+    def get_grading_result(self, exam_id: Any) -> dict[str, Any]:
+        return self.build_grading_result_view_data(exam_id)
+
+    def get_grading_result_by_student(self, exam_id: Any, student_id: Any) -> dict[str, Any]:
+        return self.build_grading_result_view_data(exam_id, student_id)
+
+    def build_grading_result_view_data(
+        self,
+        exam_id: Any,
+        student_id: Any = None,
+    ) -> dict[str, Any]:
+        if exam_id in (None, ""):
+            return {"success": False, "message": "시험을 선택해 주세요."}
+
+        try:
+            exam_id_int = int(exam_id)
+            student_id_int = int(student_id) if student_id not in (None, "") else None
+        except (TypeError, ValueError):
+            return {"success": False, "message": "채점 결과 조회 조건이 올바르지 않습니다."}
+
+        try:
+            exam = self.exam_repository.read(exam_id_int)
+            if student_id_int is None:
+                results = self.result_repository.read_by_exam(exam_id_int)
+            else:
+                result = self.result_repository.read_by_exam_and_student(exam_id_int, student_id_int)
+                results = [result] if result else []
+        except Exception as exc:
+            return {"success": False, "message": f"채점 결과 조회 중 오류가 발생했습니다: {exc}"}
+
+        if not results:
+            return {"success": False, "message": "채점 결과가 없습니다."}
+
+        question_specs = self._get_question_specs(exam_id_int)
+        question_order = {
+            int(spec["question_id"]): index
+            for index, spec in enumerate(question_specs, start=1)
+        }
+        question_by_id = {
+            int(spec["question_id"]): spec
+            for spec in question_specs
+            if spec.get("question_id") is not None
+        }
+
+        student_rows = []
+        for result in results:
+            student = self._read_student(result.student_id)
+            answer_records = self.answer_record_repository.read_by_exam_and_student(
+                exam_id_int,
+                int(result.student_id),
+            )
+            detail_rows = self._build_result_details(answer_records, question_order, question_by_id)
+            total_questions = len(question_specs) or (result.correct_count or 0) + (result.wrong_count or 0)
+            student_rows.append(
+                {
+                    "student_id": result.student_id,
+                    "student_name": getattr(student, "name", ""),
+                    "student_number": getattr(student, "student_number", ""),
+                    "class_name": getattr(student, "class_name", ""),
+                    "exam_name": getattr(exam, "exam_name", ""),
+                    "total_questions": total_questions,
+                    "correct_count": result.correct_count or 0,
+                    "wrong_count": result.wrong_count or 0,
+                    "score": result.score or 0,
+                    "accuracy": result.accuracy or 0,
+                    "details": detail_rows,
+                }
+            )
+
+        return {
+            "success": True,
+            "message": "채점 결과를 불러왔습니다.",
+            "exam": {
+                "exam_id": exam_id_int,
+                "exam_name": getattr(exam, "exam_name", ""),
+                "class_name": getattr(exam, "target_class", ""),
+                "exam_date": getattr(exam, "exam_date", ""),
+                "total_questions": len(question_specs) or getattr(exam, "total_questions", 0),
+            },
+            "students": student_rows,
         }
 
     def parse_csv_file(self, file_path: str) -> list[dict[str, str]]:
@@ -307,8 +489,13 @@ class ResultInputService:
                 specs.append(
                     {
                         "question_id": question.question_id,
+                        "question_text": question.question_text,
                         "correct_answer": question.answer_text,
                         "acceptable_answers": question.acceptable_answers,
+                        "explanation": question.explanation or "",
+                        "category": question.category,
+                        "sub_category": question.sub_category,
+                        "difficulty": question.difficulty,
                         "is_sample": False,
                     }
                 )
@@ -318,6 +505,47 @@ class ResultInputService:
             pass
 
         return []
+
+    def _get_question_order_map(self, exam_id: Any) -> dict[int, int]:
+        specs = self._get_question_specs(exam_id)
+        return {
+            int(spec["question_id"]): index
+            for index, spec in enumerate(specs, start=1)
+            if spec.get("question_id") is not None
+        }
+
+    def _read_student(self, student_id: Any) -> Any:
+        try:
+            return self.student_repository.read(int(student_id))
+        except Exception:
+            return None
+
+    def _build_result_details(
+        self,
+        answer_records: list[Any],
+        question_order: dict[int, int],
+        question_by_id: dict[int, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        rows = []
+        for record in answer_records:
+            question_id = int(record.question_id)
+            spec = question_by_id.get(question_id, {})
+            rows.append(
+                {
+                    "question_no": question_order.get(question_id, len(rows) + 1),
+                    "question_number": question_order.get(question_id, len(rows) + 1),
+                    "question_id": question_id,
+                    "question_text": spec.get("question_text", ""),
+                    "correct_answer": record.correct_answer,
+                    "student_answer": record.student_answer,
+                    "is_correct": record.is_correct == CORRECT,
+                    "score": 1 if record.is_correct == CORRECT else 0,
+                    "explanation": spec.get("explanation", ""),
+                }
+            )
+
+        rows.sort(key=lambda row: row["question_no"])
+        return rows
 
     def _is_sample_question_specs(self, question_specs: list[dict[str, Any]]) -> bool:
         return any(spec.get("is_sample") for spec in question_specs)

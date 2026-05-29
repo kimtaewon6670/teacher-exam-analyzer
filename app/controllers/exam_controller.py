@@ -19,6 +19,9 @@ class ExamController:
         self.auto_extracted_questions: list[dict[str, Any]] = []
         self.manual_selected_questions: list[dict[str, Any]] = []
         self.saved_exam_id: int | None = None
+        self.generated_exam_id_by_row_index: dict[int, int] = {}
+        self.generated_exam_id_by_row_no: dict[int, int] = {}
+        self.generated_exam_id_by_exam_id: set[int] = set()
 
         self._connect_view_events()
         self._initialize_filter_options()
@@ -210,7 +213,7 @@ class ExamController:
         self._show_message("시험지가 저장되었습니다.")
 
     def delete_exam(self, exam_id: object) -> None:
-        target_exam_id = self._normalize_question_id(exam_id)
+        target_exam_id = self._resolve_exam_id(exam_id)
         if target_exam_id is None:
             self._show_error("삭제할 시험지 정보를 찾을 수 없습니다.")
             return
@@ -378,20 +381,36 @@ class ExamController:
         except Exception:
             exams = []
 
-        self.view.set_generated_exams(
-            [
-                {
-                    "exam_id": exam.exam_id,
-                    "exam_name": exam.exam_name,
-                    "class_name": exam.target_class,
-                    "exam_date": exam.exam_date or "",
-                    "question_count": exam.total_questions,
-                    "status": "저장됨",
-                }
-                for exam in exams
-                if exam.exam_id is not None
-            ]
-        )
+        exam_rows = [
+            {
+                "row_no": index,
+                "display_order": index,
+                "exam_id": exam.exam_id,
+                "id": exam.exam_id,
+                "saved_exam_id": exam.exam_id,
+                "exam_name": exam.exam_name,
+                "class_name": exam.target_class,
+                "exam_date": exam.exam_date or "",
+                "question_count": exam.total_questions,
+                "status": "저장됨",
+            }
+            for index, exam in enumerate(exams, start=1)
+            if exam.exam_id is not None
+        ]
+        self.generated_exam_id_by_row_no = {
+            row["row_no"]: int(row["exam_id"])
+            for row in exam_rows
+        }
+        self.generated_exam_id_by_row_index = {
+            zero_index: int(row["exam_id"])
+            for zero_index, row in enumerate(exam_rows)
+        }
+        self.generated_exam_id_by_exam_id = {
+            int(row["exam_id"])
+            for row in exam_rows
+        }
+
+        self.view.set_generated_exams(exam_rows)
 
     def _with_all_option(self, all_label: str, values: list[str]) -> list[str]:
         deduped_values = [value for value in values if value and value != all_label]
@@ -514,6 +533,39 @@ class ExamController:
                 for question in self.manual_selected_questions
                 if self._get_question_id(question) != question_id
             ]
+
+    def _resolve_exam_id(self, value: object) -> int | None:
+        if isinstance(value, dict):
+            for key in ("exam_id", "saved_exam_id", "id"):
+                exam_id = self._normalize_question_id(value.get(key))
+                if exam_id is not None:
+                    return exam_id
+            for key in ("row_no", "display_order", "row", "index"):
+                row_value = self._normalize_question_id(value.get(key))
+                if key in ("index", "row") and row_value in self.generated_exam_id_by_row_index:
+                    return self.generated_exam_id_by_row_index[row_value]
+                if row_value in self.generated_exam_id_by_row_no:
+                    return self.generated_exam_id_by_row_no[row_value]
+            return None
+
+        for attr_name in ("exam_id", "saved_exam_id", "id"):
+            if hasattr(value, attr_name):
+                exam_id = self._normalize_question_id(getattr(value, attr_name))
+                if exam_id is not None:
+                    return exam_id
+
+        numeric_value = self._normalize_question_id(value)
+        if numeric_value is None:
+            return None
+
+        if numeric_value in self.generated_exam_id_by_row_index:
+            return self.generated_exam_id_by_row_index[numeric_value]
+        if numeric_value in self.generated_exam_id_by_row_no:
+            return self.generated_exam_id_by_row_no[numeric_value]
+        if numeric_value in self.generated_exam_id_by_exam_id:
+            return numeric_value
+
+        return numeric_value
 
     def _normalize_question_id(self, question_id: object) -> int | None:
         try:

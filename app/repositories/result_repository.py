@@ -43,6 +43,66 @@ class ResultRepository:
             raise
         finally:
             close_db_connection(conn)
+
+    @staticmethod
+    def replace_for_student(result: ExamResult) -> int:
+        """
+        Replace one student's saved grading result for one exam.
+
+        This keeps re-grading idempotent: saving student 2 never overwrites
+        student 1, and re-saving student 2 updates only student 2.
+        """
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                'DELETE FROM exam_results WHERE exam_id = ? AND student_id = ?',
+                (result.exam_id, result.student_id),
+            )
+            cursor.execute('''
+                INSERT INTO exam_results (exam_id, student_id, correct_count, wrong_count, score, accuracy)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (
+                result.exam_id,
+                result.student_id,
+                result.correct_count,
+                result.wrong_count,
+                result.score,
+                result.accuracy,
+            ))
+
+            conn.commit()
+            result_id = cursor.lastrowid
+            result.result_id = result_id
+            return result_id
+
+        except sqlite3.Error as e:
+            conn.rollback()
+            print(f"??Database error: {e}")
+            raise
+        finally:
+            close_db_connection(conn)
+
+    @staticmethod
+    def delete_by_exam_and_student(exam_id: int, student_id: int) -> int:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                'DELETE FROM exam_results WHERE exam_id = ? AND student_id = ?',
+                (exam_id, student_id),
+            )
+            conn.commit()
+            return cursor.rowcount
+
+        except sqlite3.Error as e:
+            conn.rollback()
+            print(f"??Database error: {e}")
+            raise
+        finally:
+            close_db_connection(conn)
     
     @staticmethod
     def read_by_exam_and_student(exam_id: int, student_id: int) -> Optional[ExamResult]:
