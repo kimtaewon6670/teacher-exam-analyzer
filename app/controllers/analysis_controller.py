@@ -164,15 +164,20 @@ class AnalysisController:
         if not isinstance(value_labels, dict):
             return
 
-        ordered_values = [
-            summary.get("student_count", "-"),
-            summary.get("average_score", "-"),
-            summary.get("correct_rate", "-"),
-            summary.get("wrong_rate", "-"),
-            summary.get("weak_type", "-"),
-        ]
+        label_to_key = {
+            "응시 학생 수": "student_count",
+            "반 전체 평균 점수": "average_score",
+            "전체 정답률": "correct_rate",
+            "전체 오답률": "wrong_rate",
+            "평균 정답 수": "average_correct_count",
+            "가장 취약한 문제 유형": "weak_type",
+        }
 
-        for value_label, value in zip(value_labels.values(), ordered_values):
+        for label, key in label_to_key.items():
+            value_label = value_labels.get(label)
+            if value_label is None:
+                continue
+            value = summary.get(key, "-")
             if hasattr(value_label, "setText"):
                 value_label.setText(str(value))
 
@@ -204,7 +209,8 @@ class AnalysisController:
             self.view.set_difficulty_accuracy_data(data.get("difficulty_accuracy", []))
         if hasattr(self.view, "set_student_result_data"):
             self.view.set_student_result_data(data.get("student_results", []))
-        self._apply_dashboard_data_to_existing_widgets(data)
+        if self.view.__class__.__name__ == "DashboardView":
+            self._apply_dashboard_data_to_existing_widgets(data)
 
     def _get_dashboard_filter_data_from_widgets(self) -> dict[str, Any]:
         combos = self._find_children_by_class_name("QComboBox")
