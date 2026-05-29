@@ -121,6 +121,27 @@ class AnalysisService:
     def get_student_result_table(self, exam_id: Any, class_id: Any = None) -> list[dict[str, Any]]:
         return self.build_dashboard_data(exam_id, class_id).get("student_results", [])
 
+    def get_registered_students_for_dashboard(self, class_id: Any = None) -> list[Any]:
+        return self._get_registered_students(class_id)
+
+    def get_exam_question_count(self, exam_id: Any) -> int:
+        exam_id_int = self._resolve_exam_id(exam_id)
+        if exam_id_int is None:
+            return 0
+
+        try:
+            exam_questions = self.exam_question_repository.read_by_exam(exam_id_int)
+            if exam_questions:
+                return len(exam_questions)
+        except Exception:
+            pass
+
+        try:
+            exam = self.exam_repository.read(exam_id_int)
+            return int(getattr(exam, "total_questions", 0) or 0)
+        except Exception:
+            return 0
+
     def build_dashboard_data(
         self,
         exam_id: Any,
@@ -140,16 +161,28 @@ class AnalysisService:
             if not exam:
                 return self._empty_dashboard("시험 정보를 찾을 수 없습니다.", exam_id_int, class_id, exam_date)
 
+            selected_class_id = class_id or getattr(exam, "target_class", "")
+            registered_students = self._get_registered_students(selected_class_id)
+            registered_student_ids = {
+                int(student.student_id)
+                for student in registered_students
+                if getattr(student, "student_id", None) is not None
+            }
             results = self.result_repository.read_by_exam(exam_id_int)
-            if class_id not in (None, ""):
-                results = self._filter_results_by_class(results, class_id)
+            if registered_student_ids:
+                results = [
+                    result for result in results if int(result.student_id) in registered_student_ids
+                ]
+            elif selected_class_id not in (None, ""):
+                results = self._filter_results_by_class(results, selected_class_id)
 
             result_student_ids = {int(result.student_id) for result in results}
             answer_records = self.answer_record_repository.read_by_exam(exam_id_int)
+            answer_student_ids = registered_student_ids or result_student_ids
             answer_records = [
                 record
                 for record in answer_records
-                if int(record.student_id) in result_student_ids
+                if int(record.student_id) in answer_student_ids
             ]
 
             exam_questions = self.exam_question_repository.read_by_exam(exam_id_int)
@@ -159,10 +192,10 @@ class AnalysisService:
         except Exception as exc:
             return self._empty_dashboard(f"대시보드 데이터 조회 중 오류가 발생했습니다: {exc}", exam_id, class_id, exam_date)
 
-        if not results:
+        if False and not results:
             return self._empty_dashboard("채점 결과가 없습니다.", exam_id_int, class_id, exam_date, exam=exam)
 
-        student_results = self._build_dashboard_student_rows(results, total_questions)
+        student_results = self._build_dashboard_student_rows(registered_students, results, total_questions)
         question_accuracy = self._build_dashboard_question_accuracy(
             answer_records,
             ordered_question_ids,
@@ -192,7 +225,13 @@ class AnalysisService:
             sort_order=["쉬움", "보통", "어려움", "미분류"],
         )
 
-        student_count = len(results)
+        if not (results and answer_records):
+            question_accuracy = []
+            category_accuracy = []
+            subcategory_accuracy = []
+            difficulty_accuracy = []
+
+        student_count = len(registered_students)
         total_answers = len(answer_records)
         total_correct = sum(1 for record in answer_records if record.is_correct == CORRECT)
         average_score = self._average([float(result.score or 0) for result in results])
@@ -204,8 +243,8 @@ class AnalysisService:
             "filters": {
                 "exam_id": exam_id_int,
                 "exam_name": getattr(exam, "exam_name", ""),
-                "class_id": class_id,
-                "class_name": class_id or getattr(exam, "target_class", ""),
+                "class_id": selected_class_id,
+                "class_name": selected_class_id,
                 "exam_date": exam_date or getattr(exam, "exam_date", ""),
             },
             "summary": {
@@ -235,28 +274,41 @@ class AnalysisService:
 
     def _build_dashboard_student_rows(
         self,
+        students: list[Any],
         results: list[Any],
         total_questions: int,
     ) -> list[dict[str, Any]]:
         rows = []
-        for result in results:
-            student = None
-            try:
-                student = self.student_repository.read(int(result.student_id))
-            except Exception:
-                student = None
+        result_by_student_id = {
+            int(result.student_id): result
+            for result in results
+            if getattr(result, "student_id", None) is not None
+        }
 
-            correct_count = int(result.correct_count or 0)
-            wrong_count = int(result.wrong_count or max(total_questions - correct_count, 0))
-            score = float(result.score or self._percent(correct_count, total_questions))
-            accuracy = float(result.accuracy or 0)
-            if accuracy <= 1:
-                accuracy *= 100
+        if not students and results:
+            students = [self._read_student(result.student_id) for result in results]
+            students = [student for student in students if student is not None]
+
+        for student in students:
+            student_id = getattr(student, "student_id", None)
+            result = result_by_student_id.get(int(student_id)) if student_id is not None else None
+            if result is None:
+                correct_count = 0
+                wrong_count = 0
+                score = 0.0
+                accuracy = 0.0
+            else:
+                correct_count = int(result.correct_count or 0)
+                wrong_count = int(result.wrong_count or max(total_questions - correct_count, 0))
+                score = float(result.score or self._percent(correct_count, total_questions))
+                accuracy = float(result.accuracy or 0)
+                if accuracy <= 1:
+                    accuracy *= 100
 
             rows.append(
                 {
                     "row_no": 0,
-                    "student_id": result.student_id,
+                    "student_id": student_id,
                     "student_name": self._get_attr(student, "name", ""),
                     "student_number": self._get_attr(student, "student_number", ""),
                     "correct_count": correct_count,
@@ -265,6 +317,29 @@ class AnalysisService:
                     "accuracy": round(accuracy, 2),
                 }
             )
+
+        if not rows:
+            for result in results:
+                student = self._read_student(result.student_id)
+                correct_count = int(result.correct_count or 0)
+                wrong_count = int(result.wrong_count or max(total_questions - correct_count, 0))
+                score = float(result.score or self._percent(correct_count, total_questions))
+                accuracy = float(result.accuracy or 0)
+                if accuracy <= 1:
+                    accuracy *= 100
+
+                rows.append(
+                    {
+                        "row_no": 0,
+                        "student_id": result.student_id,
+                        "student_name": self._get_attr(student, "name", ""),
+                        "student_number": self._get_attr(student, "student_number", ""),
+                        "correct_count": correct_count,
+                        "wrong_count": wrong_count,
+                        "score": round(score, 2),
+                        "accuracy": round(accuracy, 2),
+                    }
+                )
 
         rows.sort(key=lambda row: (str(row.get("student_name", "")), str(row.get("student_number", ""))))
         for index, row in enumerate(rows, start=1):
@@ -566,6 +641,37 @@ class AnalysisService:
             if student and self._normalize_class_name(student.class_name) == self._normalize_class_name(class_id):
                 filtered.append(result)
         return filtered
+
+    def _get_registered_students(self, class_id: Any = None) -> list[Any]:
+        try:
+            if class_id not in (None, ""):
+                students = self.student_repository.read_by_class(str(class_id), active_only=True)
+                if students:
+                    return list(students)
+
+                normalized_class_id = self._normalize_class_name(class_id)
+                students = [
+                    student
+                    for student in self.student_repository.read_all(active_only=True)
+                    if self._normalize_class_name(getattr(student, "class_name", "")) == normalized_class_id
+                ]
+                students.sort(key=lambda student: str(getattr(student, "student_number", "")))
+                return students
+
+            students = list(self.student_repository.read_all(active_only=True))
+            students.sort(key=lambda student: (
+                str(getattr(student, "class_name", "")),
+                str(getattr(student, "student_number", "")),
+            ))
+            return students
+        except Exception:
+            return []
+
+    def _read_student(self, student_id: Any) -> Any:
+        try:
+            return self.student_repository.read(int(student_id))
+        except Exception:
+            return None
 
     def _get_question_map(self, exam_id: int, answer_records: list[Any]) -> dict[int, Any]:
         question_ids = set()
