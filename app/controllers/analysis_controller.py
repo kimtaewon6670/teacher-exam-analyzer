@@ -39,6 +39,9 @@ class AnalysisController:
     def on_search_clicked(self) -> None:
         self._refresh_analysis()
 
+    def refresh_options(self) -> None:
+        self._load_initial_data()
+
     def on_reset_clicked(self) -> None:
         if hasattr(self.view, "clear_analysis"):
             self.view.clear_analysis()

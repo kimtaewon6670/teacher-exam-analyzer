@@ -53,10 +53,21 @@ class AnalysisService:
 
     def get_class_options(self) -> list[dict[str, Any]]:
         class_ids = []
+        normalized_class_ids = set()
+        try:
+            for exam in self.exam_repository.read_all():
+                if exam.target_class and self._normalize_class_name(exam.target_class) not in normalized_class_ids:
+                    class_ids.append(exam.target_class)
+                    normalized_class_ids.add(self._normalize_class_name(exam.target_class))
+        except Exception:
+            pass
+
         try:
             for student in self.student_repository.read_all(active_only=True):
-                if student.class_name and student.class_name not in class_ids:
+                normalized_class_name = self._normalize_class_name(student.class_name)
+                if student.class_name and normalized_class_name not in normalized_class_ids:
                     class_ids.append(student.class_name)
+                    normalized_class_ids.add(normalized_class_name)
         except Exception:
             pass
 
@@ -200,7 +211,7 @@ class AnalysisService:
                 student = self.student_repository.read(result.student_id)
             except Exception:
                 student = None
-            if student and student.class_name == class_id:
+            if student and self._normalize_class_name(student.class_name) == self._normalize_class_name(class_id):
                 filtered.append(result)
         return filtered
 
@@ -289,6 +300,9 @@ class AnalysisService:
         if value in (None, ""):
             return default
         return value
+
+    def _normalize_class_name(self, value: Any) -> str:
+        return str(value or "").replace(" ", "").strip()
 
     def _empty_analysis(self) -> dict[str, Any]:
         return {
