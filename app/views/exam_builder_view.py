@@ -135,6 +135,19 @@ class ExamBuilderView(QWidget):
             QLineEdit, QComboBox, QDateEdit, QSpinBox {
                 min-height: 38px;
             }
+            QComboBox QAbstractItemView {
+                background: white;
+                border: 1px solid #b8c7d9;
+                color: #172033;
+                outline: 0;
+                selection-background-color: #e8f2ff;
+                selection-color: #172033;
+            }
+            QComboBox QAbstractItemView::item {
+                color: #172033;
+                min-height: 28px;
+                padding: 6px 10px;
+            }
             QTextEdit {
                 min-height: 78px;
             }
@@ -521,6 +534,8 @@ class ExamBuilderView(QWidget):
         self.exam_type_combo.addItems(["중간고사", "기말고사", "수행평가", "기타"])
         self.class_combo = QComboBox()
         self.class_combo.setEditable(True)
+        for combo in [self.semester_combo, self.exam_type_combo, self.class_combo]:
+            self._stabilize_combo_box(combo)
         self.exam_date_edit = QDateEdit(QDate.currentDate())
         self.exam_date_edit.setCalendarPopup(True)
         self.exam_date_edit.setDisplayFormat("yyyy-MM-dd")
@@ -551,6 +566,8 @@ class ExamBuilderView(QWidget):
         self.sub_category_combo.setEditable(True)
         self.tag_combo = QComboBox()
         self.tag_combo.setEditable(True)
+        for combo in [self.question_type_combo, self.difficulty_combo, self.sub_category_combo, self.tag_combo]:
+            self._stabilize_combo_box(combo)
         add_button = QPushButton("담기")
         add_button.setObjectName("primaryButton")
         add_button.clicked.connect(self._add_condition_to_cart)
@@ -1010,7 +1027,34 @@ class ExamBuilderView(QWidget):
             index = combo.findText(current)
             if index >= 0:
                 combo.setCurrentIndex(index)
+        self._stabilize_combo_box(combo)
         combo.blockSignals(False)
+
+    def _stabilize_combo_box(self, combo: QComboBox) -> None:
+        combo.setMinimumWidth(max(combo.minimumWidth(), 78))
+        combo.setMinimumContentsLength(4)
+        combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        combo.setMaxVisibleItems(12)
+        combo.view().setMinimumWidth(max(combo.view().minimumWidth(), 120))
+        combo.view().setStyleSheet(
+            """
+            QListView {
+                background: white;
+                border: 1px solid #b8c7d9;
+                color: #172033;
+                outline: 0;
+            }
+            QListView::item {
+                color: #172033;
+                min-height: 28px;
+                padding: 6px 10px;
+            }
+            QListView::item:selected {
+                background: #e8f2ff;
+                color: #172033;
+            }
+            """
+        )
 
 
 class SelectedQuestionListDialog(QDialog):
