@@ -714,7 +714,15 @@ class AnalysisService:
     def _weakest_label(self, rows: list[dict[str, Any]], label_key: str) -> str:
         if not rows:
             return "-"
-        weakest = min(rows, key=lambda row: float(row.get("correct_rate", 100)))
+        weak_rows = [
+            row
+            for row in rows
+            if float(row.get("correct_rate", 100) or 0) < 100
+        ]
+        if not weak_rows:
+            return ""
+
+        weakest = min(weak_rows, key=lambda row: float(row.get("correct_rate", 100)))
         return str(weakest.get(label_key, "-"))
 
     def _build_feedback(
@@ -729,20 +737,31 @@ class AnalysisService:
         weak_difficulty = self._weakest_label(difficulty_rows, "difficulty")
         weak_questions = [
             str(row.get("question_number"))
-            for row in sorted(question_rows, key=lambda row: float(row.get("correct_rate", 100)))[:3]
+            for row in sorted(
+                [
+                    row
+                    for row in question_rows
+                    if float(row.get("correct_rate", 100) or 0) < 100
+                ],
+                key=lambda row: float(row.get("correct_rate", 100)),
+            )[:3]
         ]
 
         parts = []
-        if weak_type != "-":
+        if weak_type and weak_type != "-":
             parts.append(f"{weak_type} 유형의 정답률이 가장 낮습니다")
-        if weak_sub_category != "-":
+        if weak_sub_category and weak_sub_category != "-":
             parts.append(f"{weak_sub_category} 세부 분류를 우선 보강하세요")
-        if weak_difficulty != "-":
+        if weak_difficulty and weak_difficulty != "-":
             parts.append(f"{weak_difficulty} 난이도 문항을 추가 복습하면 좋습니다")
         if weak_questions:
             parts.append(f"오답률이 높은 문항: {', '.join(weak_questions)}번")
 
-        return ". ".join(parts) + ("." if parts else "분석할 결과 데이터가 없습니다.")
+        if parts:
+            return ". ".join(parts) + "."
+        if type_rows or sub_category_rows or difficulty_rows or question_rows:
+            return ""
+        return "분석할 결과 데이터가 없습니다."
 
     def _get_question_text(self, question: Any, question_id: int) -> str:
         text = self._get_attr(question, "question_text", "")
