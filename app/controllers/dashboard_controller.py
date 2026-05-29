@@ -14,4 +14,4 @@ class DashboardController(AnalysisController):
     """
 
     def __init__(self, view: Any, analysis_service: AnalysisService | None = None) -> None:
-        super().__init__(view, analysis_service)
+        super().__init__(view, analysis_service, attach_dashboard=False)

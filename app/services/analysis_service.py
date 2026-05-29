@@ -192,9 +192,6 @@ class AnalysisService:
         except Exception as exc:
             return self._empty_dashboard(f"대시보드 데이터 조회 중 오류가 발생했습니다: {exc}", exam_id, class_id, exam_date)
 
-        if False and not results:
-            return self._empty_dashboard("채점 결과가 없습니다.", exam_id_int, class_id, exam_date, exam=exam)
-
         student_results = self._build_dashboard_student_rows(registered_students, results, total_questions)
         question_accuracy = self._build_dashboard_question_accuracy(
             answer_records,

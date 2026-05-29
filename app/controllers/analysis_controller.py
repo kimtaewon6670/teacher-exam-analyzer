@@ -8,14 +8,25 @@ from app.services.analysis_service import AnalysisService
 class AnalysisController:
     """Connect analysis View events to result-analysis Service logic."""
 
-    def __init__(self, view: Any, analysis_service: AnalysisService | None = None) -> None:
+    def __init__(
+        self,
+        view: Any,
+        analysis_service: AnalysisService | None = None,
+        attach_dashboard: bool = True,
+    ) -> None:
         self.view = view
         self.analysis_service = analysis_service or AnalysisService()
         self._exam_id_by_name: dict[str, Any] = {}
         self._class_id_by_name: dict[str, Any] = {}
+        self._last_dashboard_data: dict[str, Any] = {}
+        self._dashboard_page = 1
+        self._dashboard_page_size = 5
 
         self._connect_view_events()
         self._load_initial_data()
+        self._connect_dashboard_widget_events()
+        if attach_dashboard:
+            self._attach_dashboard_view_if_available()
 
     def _connect_view_events(self) -> None:
         if hasattr(self.view, "search_button"):
@@ -130,6 +141,7 @@ class AnalysisController:
             self.view.set_weakness_summary(data)
 
     def _set_dashboard_data(self, data: dict[str, Any]) -> None:
+        self._last_dashboard_data = data
         if hasattr(self.view, "set_dashboard_data"):
             self.view.set_dashboard_data(data)
         if hasattr(self.view, "set_dashboard_summary"):
@@ -183,6 +195,106 @@ class AnalysisController:
         self._apply_metric_cards(data.get("metrics", []))
         self._apply_dashboard_charts(data.get("charts", {}))
         self._apply_student_table(data.get("student_results", []))
+
+    def _attach_dashboard_view_if_available(self) -> None:
+        dashboard_views = self._find_children_by_class_name_from_root("DashboardView")
+        for dashboard_view in dashboard_views:
+            if dashboard_view is self.view or hasattr(dashboard_view, "_dashboard_controller"):
+                continue
+            try:
+                from app.controllers.dashboard_controller import DashboardController
+
+                dashboard_view._dashboard_controller = DashboardController(
+                    dashboard_view,
+                    self.analysis_service,
+                )
+            except Exception:
+                continue
+
+    def _connect_dashboard_widget_events(self) -> None:
+        if getattr(self.view, "_dashboard_events_connected", False):
+            return
+        if self.view.__class__.__name__ != "DashboardView":
+            return
+
+        self.view._dashboard_events_connected = True
+        for combo in self._find_children_by_class_name("QComboBox"):
+            try:
+                combo.currentIndexChanged.connect(lambda *_: self.on_search_clicked())
+            except Exception:
+                pass
+
+        for button in self._find_children_by_class_name("QPushButton"):
+            text = str(button.text() if hasattr(button, "text") else "").strip()
+            try:
+                if text == "엑셀 내보내기":
+                    button.clicked.connect(self.export_dashboard_student_results)
+                elif text == "전체 보기":
+                    button.clicked.connect(self.show_all_dashboard_results)
+                elif text in {"‹", "<"}:
+                    button.clicked.connect(lambda *_: self.move_dashboard_page(-1))
+                elif text in {"›", ">"}:
+                    button.clicked.connect(lambda *_: self.move_dashboard_page(1))
+                elif text.isdigit():
+                    page = int(text)
+                    button.clicked.connect(lambda *_args, page=page: self.set_dashboard_page(page))
+            except Exception:
+                continue
+
+        for line_edit in self._find_children_by_class_name("QLineEdit"):
+            try:
+                line_edit.textChanged.connect(lambda *_: self.set_dashboard_page(1))
+            except Exception:
+                pass
+
+    def show_all_dashboard_results(self) -> None:
+        self._clear_dashboard_search()
+        self._dashboard_page = 1
+        self._set_dashboard_data(self.get_dashboard_data())
+
+    def set_dashboard_page(self, page: int) -> None:
+        self._dashboard_page = max(int(page or 1), 1)
+        self._apply_student_table(self._last_dashboard_data.get("student_results", []))
+
+    def move_dashboard_page(self, delta: int) -> None:
+        self.set_dashboard_page(self._dashboard_page + delta)
+
+    def export_dashboard_student_results(self) -> dict[str, Any]:
+        rows = self._last_dashboard_data.get("student_results", [])
+        if not rows:
+            result = {"success": False, "message": "내보낼 학생별 결과가 없습니다."}
+            self._show_dashboard_message(result["message"])
+            return result
+
+        from csv import DictWriter
+        from pathlib import Path
+
+        export_dir = Path("data")
+        export_dir.mkdir(exist_ok=True)
+        file_path = export_dir / "dashboard_student_results.csv"
+        fieldnames = [
+            "row_no",
+            "student_id",
+            "student_name",
+            "student_number",
+            "correct_count",
+            "wrong_count",
+            "score",
+            "accuracy",
+        ]
+        with file_path.open("w", encoding="utf-8-sig", newline="") as csv_file:
+            writer = DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({key: row.get(key, "") for key in fieldnames})
+
+        result = {
+            "success": True,
+            "message": "학생별 결과를 내보냈습니다.",
+            "file_path": str(file_path),
+        }
+        self._show_dashboard_message(f"{result['message']} ({file_path})")
+        return result
 
     def _apply_metric_cards(self, metrics: list[dict[str, Any]]) -> None:
         values = self._find_children_by_object_name("metricValue")
@@ -239,6 +351,8 @@ class AnalysisController:
         except Exception:
             return
 
+        filtered_rows = self._filter_dashboard_rows(rows)
+        page_rows, page_count = self._get_dashboard_page_rows(filtered_rows)
         table_rows = [
             [
                 row.get("row_no", index),
@@ -249,7 +363,7 @@ class AnalysisController:
                 f"{float(row.get('score', 0) or 0):.2f}",
                 f"{float(row.get('accuracy', 0) or 0):.2f}%",
             ]
-            for index, row in enumerate(rows, start=1)
+            for index, row in enumerate(page_rows, start=1)
         ]
 
         table.setRowCount(len(table_rows))
@@ -258,6 +372,70 @@ class AnalysisController:
                 item = QTableWidgetItem(str(value))
                 item.setTextAlignment(Qt.AlignCenter)
                 table.setItem(row_index, column_index, item)
+        self._update_dashboard_page_buttons(page_count)
+
+    def _filter_dashboard_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        keyword = self._get_dashboard_search_text()
+        if not keyword:
+            return list(rows)
+
+        return [
+            row
+            for row in rows
+            if keyword in str(row.get("student_name", "")).lower()
+            or keyword in str(row.get("student_number", "")).lower()
+        ]
+
+    def _get_dashboard_page_rows(self, rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+        page_size = max(int(self._dashboard_page_size or 5), 1)
+        page_count = max(((len(rows) - 1) // page_size) + 1, 1)
+        self._dashboard_page = min(max(int(self._dashboard_page or 1), 1), page_count)
+        start = (self._dashboard_page - 1) * page_size
+        return rows[start:start + page_size], page_count
+
+    def _get_dashboard_search_text(self) -> str:
+        line_edits = self._find_children_by_class_name("QLineEdit")
+        if not line_edits:
+            return ""
+        try:
+            return str(line_edits[0].text()).strip().lower()
+        except Exception:
+            return ""
+
+    def _clear_dashboard_search(self) -> None:
+        for line_edit in self._find_children_by_class_name("QLineEdit"):
+            try:
+                line_edit.clear()
+            except Exception:
+                pass
+
+    def _update_dashboard_page_buttons(self, page_count: int) -> None:
+        prev_text = "\u2039"
+        next_text = "\u203a"
+        for button in self._find_children_by_class_name("QPushButton"):
+            text = str(button.text() if hasattr(button, "text") else "").strip()
+            try:
+                if text in {prev_text, "<"}:
+                    button.setEnabled(self._dashboard_page > 1)
+                elif text in {next_text, ">"}:
+                    button.setEnabled(self._dashboard_page < page_count)
+                elif text.isdigit():
+                    page = int(text)
+                    button.setEnabled(page <= page_count)
+                    if hasattr(button, "setChecked"):
+                        button.setChecked(page == self._dashboard_page)
+            except Exception:
+                continue
+
+    def _show_dashboard_message(self, message: str) -> None:
+        for method_name in ("show_message", "show_validation_message", "set_status_message"):
+            method = getattr(self.view, method_name, None)
+            if callable(method):
+                try:
+                    method(message)
+                    return
+                except Exception:
+                    continue
 
     def _set_chart_attrs(self, chart: Any, **attrs: Any) -> None:
         for key, value in attrs.items():
@@ -290,6 +468,27 @@ class AnalysisController:
                 child
                 for child in self.view.findChildren(QObject)
                 if hasattr(child, "objectName") and child.objectName() == object_name
+            ]
+        except Exception:
+            return []
+
+    def _find_children_by_class_name_from_root(self, class_name: str) -> list[Any]:
+        root = self.view
+        try:
+            if hasattr(self.view, "window"):
+                root = self.view.window()
+        except Exception:
+            root = self.view
+
+        if not hasattr(root, "findChildren"):
+            return []
+        try:
+            from PySide6.QtCore import QObject
+
+            return [
+                child
+                for child in root.findChildren(QObject)
+                if child.__class__.__name__ == class_name
             ]
         except Exception:
             return []
