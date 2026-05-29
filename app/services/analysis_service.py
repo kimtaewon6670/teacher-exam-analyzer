@@ -535,10 +535,15 @@ class AnalysisService:
     ) -> dict[str, Any]:
         student_count = len({result.student_id for result in results})
         average_score = self._average([float(result.score or 0) for result in results])
-        correct_rate = self._average([float(result.accuracy or 0) * 100 for result in results])
-        if not results and answer_records:
+        if answer_records:
             correct_rate = self._answer_record_correct_rate(answer_records)
-        wrong_rate = max(100 - correct_rate, 0)
+            wrong_rate = self._answer_record_wrong_rate(answer_records)
+        else:
+            correct_rate = self._average([
+                self._normalize_percent(result.accuracy)
+                for result in results
+            ])
+            wrong_rate = max(100 - correct_rate, 0)
 
         question_rows = self._build_question_rows(answer_records, question_map)
         type_rows = self._build_group_rows(answer_records, question_map, "category", "type")
@@ -705,6 +710,18 @@ class AnalysisService:
 
     def _answer_record_correct_rate(self, records: list[Any]) -> float:
         return self._record_rate(records)
+
+    def _answer_record_wrong_rate(self, records: list[Any]) -> float:
+        if not records:
+            return 0.0
+        wrong_count = sum(1 for record in records if record.is_correct != CORRECT)
+        return (wrong_count / len(records)) * 100
+
+    def _normalize_percent(self, value: Any) -> float:
+        number = float(value or 0)
+        if 0 <= number <= 1:
+            return number * 100
+        return number
 
     def _average(self, values: list[float]) -> float:
         if not values:
