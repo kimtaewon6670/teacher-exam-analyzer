@@ -60,7 +60,6 @@ class MainWindow(QMainWindow):
             "시험지 생성",
             "결과 입력",
             "결과 분석",
-            "리포트",
         ]:
             self.pages.addWidget(PlaceholderPage(name))
 
@@ -205,22 +204,10 @@ class Sidebar(QFrame):
             "▣  시험지 생성",
             "✎  결과 입력",
             "▥  결과 분석",
-            "□  리포트",
         ]:
             self.navigation.addItem(QListWidgetItem(label))
 
         layout.addWidget(self.navigation, 1)
-
-        divider = QFrame()
-        divider.setObjectName("divider")
-        layout.addWidget(divider)
-
-        for text in ["⚙  설정", "◎  데이터 백업/복원"]:
-            utility = QLabel(text)
-            utility.setObjectName("utility")
-            utility.setFixedHeight(28)
-            utility.setAlignment(Qt.AlignVCenter)
-            layout.addWidget(utility)
 
 
 class PlaceholderPage(QWidget):
