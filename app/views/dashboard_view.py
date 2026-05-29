@@ -6,11 +6,14 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -112,6 +115,51 @@ class DashboardView(QWidget):
             """
         )
 
+    def show_message(self, message: str) -> None:
+        QMessageBox.information(self, "안내", message)
+
+    def show_dashboard_student_results(self, rows: list[dict[str, object]]) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("학생별 결과 전체 보기")
+        dialog.resize(1100, 720)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 22, 24, 24)
+        layout.setSpacing(14)
+
+        title = QLabel("학생별 결과")
+        title.setObjectName("pageTitle")
+        layout.addWidget(title)
+
+        table = QTableWidget(0, 6)
+        table.setHorizontalHeaderLabels(["순번", "이름", "학번", "정답 수", "오답 수", "점수"])
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setSelectionMode(QTableWidget.NoSelection)
+        table.setRowCount(len(rows))
+        for row_index, row in enumerate(rows):
+            values = [
+                row.get("row_no", row_index + 1),
+                row.get("student_name", ""),
+                row.get("student_number", ""),
+                row.get("correct_count", 0),
+                row.get("wrong_count", 0),
+                f"{float(row.get('score', 0) or 0):.2f}",
+            ]
+            for column_index, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                item.setTextAlignment(Qt.AlignCenter)
+                table.setItem(row_index, column_index, item)
+            table.setRowHeight(row_index, 36)
+        layout.addWidget(table, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.setStyleSheet(self.styleSheet())
+        dialog.exec()
+
     def _build_header(self) -> QHBoxLayout:
         header = QHBoxLayout()
         header.setSpacing(14)
@@ -142,7 +190,6 @@ class DashboardView(QWidget):
             ("●", "#3d8be8", "응시 학생 수", "28", "명"),
             ("▣", "#35b86b", "총 문항 수", "30", "문항"),
             ("▤", "#8c63d9", "반 평균 점수", "72.35", "점 /100"),
-            ("◕", "#f59a23", "전체 정답률", "72.45", "%"),
             ("✓", "#18b6bd", "평균 정답 수", "21.74", "개"),
         ]
         for icon, color, label, value, unit in metrics:
@@ -155,7 +202,7 @@ class DashboardView(QWidget):
 
         row.addWidget(
             ChartCard(
-                "문항별 정답률",
+                "문항별 결과",
                 BarChart(
                     [48, 64, 38, 76, 88, 61, 72, 50, 42, 57, 68, 46, 34, 39, 75,
                      49, 43, 89, 70, 32, 58, 77, 46, 72, 54, 80, 61, 49, 73, 84],
@@ -168,7 +215,7 @@ class DashboardView(QWidget):
         )
         row.addWidget(
             ChartCard(
-                "유형별 정답률",
+                "유형별 결과",
                 DonutChart(
                     [78.1, 65.2, 74.3],
                     ["어휘", "문법", "독해"],
@@ -179,7 +226,7 @@ class DashboardView(QWidget):
         )
         row.addWidget(
             ChartCard(
-                "세부 분류별 정답률 (상위 5개)",
+                "세부 분류별 결과 (상위 5개)",
                 HorizontalBarChart(
                     [
                         ("시제", 58.3),
@@ -200,7 +247,7 @@ class DashboardView(QWidget):
         row.setSpacing(12)
         row.addWidget(
             ChartCard(
-                "난이도별 정답률",
+                "난이도별 결과",
                 DonutChart(
                     [85.1, 72.4, 56.3],
                     ["쉬움", "보통", "어려움"],
@@ -276,11 +323,8 @@ class ChartCard(QFrame):
         header = QHBoxLayout()
         label = QLabel(title)
         label.setObjectName("cardTitle")
-        button = QPushButton("전체 보기")
-        button.setFixedHeight(30)
         header.addWidget(label)
         header.addStretch()
-        header.addWidget(button)
 
         layout.addLayout(header)
         layout.addWidget(chart, 1)
@@ -302,9 +346,12 @@ class StudentResultCard(QFrame):
         header.addWidget(title)
         header.addStretch()
         export = QPushButton("엑셀 내보내기")
+        export.setObjectName("dashboardExportButton")
         export.setStyleSheet("color: #087f3e;")
         header.addWidget(export)
-        header.addWidget(QPushButton("전체 보기"))
+        full_view = QPushButton("전체 보기")
+        full_view.setObjectName("dashboardFullViewButton")
+        header.addWidget(full_view)
         layout.addLayout(header)
 
         tools = QHBoxLayout()
@@ -315,14 +362,14 @@ class StudentResultCard(QFrame):
         tools.addStretch()
         layout.addLayout(tools)
 
-        table = QTableWidget(5, 7)
-        table.setHorizontalHeaderLabels(["순번", "이름", "학번", "정답 수", "오답 수", "점수", "정답률"])
+        table = QTableWidget(5, 6)
+        table.setHorizontalHeaderLabels(["순번", "이름", "학번", "정답 수", "오답 수", "점수"])
         rows = [
-            ["1", "김민수", "2024001", "25", "5", "83.33", "83.33%"],
-            ["2", "이서연", "2024002", "22", "8", "73.33", "73.33%"],
-            ["3", "박지훈", "2024003", "24", "6", "80.00", "80.00%"],
-            ["4", "최유진", "2024004", "18", "12", "60.00", "60.00%"],
-            ["5", "정하랑", "2024005", "20", "10", "66.67", "66.67%"],
+            ["1", "김민수", "2024001", "25", "5", "83.33"],
+            ["2", "이서연", "2024002", "22", "8", "73.33"],
+            ["3", "박지훈", "2024003", "24", "6", "80.00"],
+            ["4", "최유진", "2024004", "18", "12", "60.00"],
+            ["5", "정하랑", "2024005", "20", "10", "66.67"],
         ]
         for row_index, row in enumerate(rows):
             for col_index, value in enumerate(row):
@@ -362,6 +409,10 @@ class BarChart(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         rect = self.rect().adjusted(34, 10, -12, -32)
+        if not self.values:
+            painter.setPen(QColor("#75849a"))
+            painter.drawText(rect, Qt.AlignCenter, "표시할 데이터가 없습니다.")
+            return
 
         painter.setPen(QPen(QColor("#dfe6ef"), 1))
         for i in range(5):
@@ -403,6 +454,10 @@ class HorizontalBarChart(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         rect = self.rect().adjusted(90, 8, -44, -24)
+        if not self.values:
+            painter.setPen(QColor("#75849a"))
+            painter.drawText(rect, Qt.AlignCenter, "표시할 데이터가 없습니다.")
+            return
         row_height = rect.height() / len(self.values)
 
         painter.setPen(QPen(QColor("#dfe6ef"), 1))
@@ -444,6 +499,10 @@ class DonutChart(QWidget):
         side = min(self.height() - 16, self.width() // 2)
         chart = QRectF(20, 8, side, side)
         total = sum(self.values)
+        if total <= 0:
+            painter.setPen(QColor("#75849a"))
+            painter.drawText(self.rect(), Qt.AlignCenter, "표시할 데이터가 없습니다.")
+            return
         start = 90 * 16
         for value, color in zip(self.values, self.colors):
             span = -int(value / total * 360 * 16)
