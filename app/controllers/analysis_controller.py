@@ -120,8 +120,10 @@ class AnalysisController:
         return self._get_dashboard_filter_data_from_widgets()
 
     def _set_summary_data(self, summary: dict[str, Any]) -> None:
+        summary = self._normalize_analysis_summary(summary)
         if hasattr(self.view, "set_summary_data"):
             self.view.set_summary_data(summary)
+        self._apply_analysis_summary_cards(summary)
 
     def _set_question_analysis_data(self, rows: list[dict[str, Any]]) -> None:
         if hasattr(self.view, "set_question_analysis_data"):
@@ -142,6 +144,49 @@ class AnalysisController:
     def _set_weakness_summary(self, data: dict[str, Any]) -> None:
         if hasattr(self.view, "set_weakness_summary"):
             self.view.set_weakness_summary(data)
+
+    def _normalize_analysis_summary(self, summary: dict[str, Any]) -> dict[str, Any]:
+        normalized = dict(summary or {})
+        correct_rate = self._to_percent_number(normalized.get("correct_rate"))
+        wrong_rate = self._to_percent_number(normalized.get("wrong_rate"))
+
+        if correct_rate is not None and correct_rate >= 100:
+            normalized["correct_rate"] = "100.00%"
+            normalized["wrong_rate"] = "0.00%"
+            normalized["weak_type"] = ""
+        elif wrong_rate is not None:
+            normalized["wrong_rate"] = f"{max(wrong_rate, 0):.2f}%"
+
+        return normalized
+
+    def _apply_analysis_summary_cards(self, summary: dict[str, Any]) -> None:
+        value_labels = getattr(self.view, "_summary_value_labels", None)
+        if not isinstance(value_labels, dict):
+            return
+
+        ordered_values = [
+            summary.get("student_count", "-"),
+            summary.get("average_score", "-"),
+            summary.get("correct_rate", "-"),
+            summary.get("wrong_rate", "-"),
+            summary.get("weak_type", "-"),
+        ]
+
+        for value_label, value in zip(value_labels.values(), ordered_values):
+            if hasattr(value_label, "setText"):
+                value_label.setText(str(value))
+
+    def _to_percent_number(self, value: Any) -> float | None:
+        if value in (None, ""):
+            return None
+        text = str(value).replace("%", "").strip()
+        try:
+            number = float(text)
+        except (TypeError, ValueError):
+            return None
+        if 0 <= number <= 1:
+            return number * 100
+        return number
 
     def _set_dashboard_data(self, data: dict[str, Any]) -> None:
         self._last_dashboard_data = data
