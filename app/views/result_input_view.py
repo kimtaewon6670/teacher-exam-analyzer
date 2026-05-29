@@ -349,17 +349,15 @@ class ResultInputView(QWidget):
         layout.setSpacing(10)
 
         self.validate_button = QPushButton("입력값 검증")
-        self.save_button = QPushButton("답안 저장")
-        self.grade_button = QPushButton("자동 채점 실행")
+        self.save_button = QPushButton("답안 저장 및 자동채점")
         self.result_view_button = QPushButton("결과 보기")
         self.reset_button = QPushButton("초기화")
-        self.grade_button.setObjectName("primaryButton")
+        self.save_button.setObjectName("primaryButton")
         self.result_view_button.setEnabled(False)
 
         layout.addStretch()
         layout.addWidget(self.validate_button)
         layout.addWidget(self.save_button)
-        layout.addWidget(self.grade_button)
         layout.addWidget(self.result_view_button)
         layout.addWidget(self.reset_button)
         return card

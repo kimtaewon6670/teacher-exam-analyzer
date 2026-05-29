@@ -56,7 +56,6 @@ class AnalysisView(QWidget):
         layout.addLayout(middle_row)
 
         layout.addWidget(self._build_sub_category_analysis_card())
-        layout.addWidget(self._build_weakness_card())
         layout.addStretch()
 
         self.setStyleSheet(
@@ -204,7 +203,7 @@ class AnalysisView(QWidget):
         self.difficulty_graph_label.setText(self._build_rate_graph(rows, "difficulty", "난이도별 정답률"))
 
     def set_weakness_summary(self, data: dict[str, object]) -> None:
-        self.feedback_label.setText(str(data.get("feedback", "-")))
+        pass
 
     def clear_analysis(self) -> None:
         for value_label in self._summary_value_labels.values():
@@ -303,17 +302,6 @@ class AnalysisView(QWidget):
         self.difficulty_graph_label = self._make_graph_placeholder()
         layout.addWidget(self.difficulty_table)
         layout.addWidget(self.difficulty_graph_label)
-        return card
-
-    def _build_weakness_card(self) -> QFrame:
-        card = self._make_card("반 전체 취약 유형 확인")
-        layout = card.layout()
-        grid = QGridLayout()
-        self.feedback_label = QLabel("-")
-        self.feedback_label.setObjectName("weaknessLabel")
-        self.feedback_label.setWordWrap(True)
-        grid.addWidget(self._make_labeled_widget("추천 피드백 문구", self.feedback_label), 0, 0, 1, 3)
-        layout.addLayout(grid)
         return card
 
     def _make_card(self, title: str) -> QFrame:
