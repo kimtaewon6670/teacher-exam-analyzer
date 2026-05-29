@@ -33,6 +33,9 @@ class AnalysisController:
             self.view.search_button.clicked.connect(self.on_search_clicked)
         if hasattr(self.view, "reset_button"):
             self.view.reset_button.clicked.connect(self.on_reset_clicked)
+        if self.view.__class__.__name__ != "DashboardView":
+            return
+
         if hasattr(self.view, "exam_combo"):
             self.view.exam_combo.currentIndexChanged.connect(lambda *_: self.on_search_clicked())
         if hasattr(self.view, "class_combo"):
@@ -224,9 +227,26 @@ class AnalysisController:
             except Exception:
                 pass
 
+        export_button = self._find_child_by_object_name("dashboardExportButton")
+        if export_button is not None and hasattr(export_button, "clicked"):
+            try:
+                export_button.clicked.connect(self.export_dashboard_student_results)
+            except Exception:
+                pass
+
+        full_view_button = self._find_child_by_object_name("dashboardFullViewButton")
+        if full_view_button is not None and hasattr(full_view_button, "clicked"):
+            try:
+                full_view_button.clicked.connect(self.show_all_dashboard_results)
+            except Exception:
+                pass
+
         for button in self._find_children_by_class_name("QPushButton"):
             text = str(button.text() if hasattr(button, "text") else "").strip()
+            object_name = str(button.objectName() if hasattr(button, "objectName") else "")
             try:
+                if object_name in {"dashboardExportButton", "dashboardFullViewButton", "chartFullViewButton"}:
+                    continue
                 if text == "엑셀 내보내기":
                     button.clicked.connect(self.export_dashboard_student_results)
                 elif text == "전체 보기":
@@ -250,7 +270,13 @@ class AnalysisController:
     def show_all_dashboard_results(self) -> None:
         self._clear_dashboard_search()
         self._dashboard_page = 1
-        self._set_dashboard_data(self.get_dashboard_data())
+        data = self.get_dashboard_data()
+        self._set_dashboard_data(data)
+        rows = data.get("student_results", [])
+        if hasattr(self.view, "show_dashboard_student_results"):
+            self.view.show_dashboard_student_results(rows)
+        elif not rows:
+            self._show_dashboard_message("표시할 학생별 결과가 없습니다.")
 
     def set_dashboard_page(self, page: int) -> None:
         self._dashboard_page = max(int(page or 1), 1)
@@ -267,26 +293,36 @@ class AnalysisController:
             return result
 
         from csv import DictWriter
+        from datetime import datetime
         from pathlib import Path
 
         export_dir = Path("data")
         export_dir.mkdir(exist_ok=True)
         file_path = export_dir / "dashboard_student_results.csv"
         fieldnames = [
-            "row_no",
-            "student_id",
-            "student_name",
-            "student_number",
-            "correct_count",
-            "wrong_count",
-            "score",
-            "accuracy",
+            "순번",
+            "학생ID",
+            "이름",
+            "학번",
+            "정답 수",
+            "오답 수",
+            "점수",
         ]
-        with file_path.open("w", encoding="utf-8-sig", newline="") as csv_file:
-            writer = DictWriter(csv_file, fieldnames=fieldnames)
-            writer.writeheader()
-            for row in rows:
-                writer.writerow({key: row.get(key, "") for key in fieldnames})
+        field_map = {
+            "순번": "row_no",
+            "학생ID": "student_id",
+            "이름": "student_name",
+            "학번": "student_number",
+            "정답 수": "correct_count",
+            "오답 수": "wrong_count",
+            "점수": "score",
+        }
+        try:
+            self._write_dashboard_csv(file_path, fieldnames, field_map, rows)
+        except PermissionError:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            file_path = export_dir / f"dashboard_student_results_{timestamp}.csv"
+            self._write_dashboard_csv(file_path, fieldnames, field_map, rows)
 
         result = {
             "success": True,
@@ -296,7 +332,32 @@ class AnalysisController:
         self._show_dashboard_message(f"{result['message']} ({file_path})")
         return result
 
+    def _write_dashboard_csv(
+        self,
+        file_path: Any,
+        fieldnames: list[str],
+        field_map: dict[str, str],
+        rows: list[dict[str, Any]],
+    ) -> None:
+        from csv import DictWriter
+
+        with file_path.open("w", encoding="utf-8-sig", newline="") as csv_file:
+            writer = DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow(
+                    {
+                        header: row.get(source_key, "")
+                        for header, source_key in field_map.items()
+                    }
+                )
+
     def _apply_metric_cards(self, metrics: list[dict[str, Any]]) -> None:
+        metrics = [
+            metric
+            for metric in metrics
+            if "정답률" not in str(metric.get("label", ""))
+        ]
         values = self._find_children_by_object_name("metricValue")
         units = self._find_children_by_object_name("metricUnit")
         labels = self._find_children_by_object_name("smallMuted")
@@ -361,7 +422,6 @@ class AnalysisController:
                 row.get("correct_count", 0),
                 row.get("wrong_count", 0),
                 f"{float(row.get('score', 0) or 0):.2f}",
-                f"{float(row.get('accuracy', 0) or 0):.2f}%",
             ]
             for index, row in enumerate(page_rows, start=1)
         ]
@@ -471,6 +531,10 @@ class AnalysisController:
             ]
         except Exception:
             return []
+
+    def _find_child_by_object_name(self, object_name: str) -> Any:
+        children = self._find_children_by_object_name(object_name)
+        return children[0] if children else None
 
     def _find_children_by_class_name_from_root(self, class_name: str) -> list[Any]:
         root = self.view
