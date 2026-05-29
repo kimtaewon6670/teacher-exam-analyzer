@@ -130,18 +130,15 @@ class AnalysisService:
         if exam_id in (None, ""):
             return self._empty_dashboard("시험을 선택해 주세요.", exam_id, class_id, exam_date)
 
-        try:
-            exam_id_int = int(exam_id)
-        except (TypeError, ValueError):
+        exam_id_int = self._resolve_exam_id(exam_id)
+        if exam_id_int is None:
             return self._empty_dashboard("시험 ID가 올바르지 않습니다.", exam_id, class_id, exam_date)
+        exam_date = self._normalize_exam_date(exam_date)
 
         try:
             exam = self.exam_repository.read(exam_id_int)
             if not exam:
                 return self._empty_dashboard("시험 정보를 찾을 수 없습니다.", exam_id_int, class_id, exam_date)
-
-            if exam_date not in (None, "") and str(getattr(exam, "exam_date", "")) != str(exam_date):
-                return self._empty_dashboard("선택한 날짜에 해당하는 채점 결과가 없습니다.", exam_id_int, class_id, exam_date)
 
             results = self.result_repository.read_by_exam(exam_id_int)
             if class_id not in (None, ""):
@@ -201,7 +198,7 @@ class AnalysisService:
         average_score = self._average([float(result.score or 0) for result in results])
         average_correct_count = self._average([float(result.correct_count or 0) for result in results])
 
-        return {
+        dashboard = {
             "success": True,
             "message": "대시보드 데이터를 조회했습니다.",
             "filters": {
@@ -227,6 +224,14 @@ class AnalysisService:
             "difficulty_accuracy": difficulty_accuracy,
             "student_results": student_results,
         }
+        dashboard["metrics"] = self._build_dashboard_metrics(dashboard["summary"])
+        dashboard["charts"] = self._build_dashboard_chart_payload(
+            question_accuracy,
+            category_accuracy,
+            subcategory_accuracy,
+            difficulty_accuracy,
+        )
+        return dashboard
 
     def _build_dashboard_student_rows(
         self,
@@ -332,6 +337,81 @@ class AnalysisService:
             rows.sort(key=lambda row: str(row.get(output_key, "")))
         return rows
 
+    def _build_dashboard_metrics(self, summary: dict[str, Any]) -> list[dict[str, Any]]:
+        return [
+            {
+                "key": "student_count",
+                "label": "응시 학생 수",
+                "value": str(summary.get("student_count", 0)),
+                "unit": "명",
+            },
+            {
+                "key": "total_questions",
+                "label": "총 문항 수",
+                "value": str(summary.get("total_questions", 0)),
+                "unit": "문항",
+            },
+            {
+                "key": "average_score",
+                "label": "반 평균 점수",
+                "value": f"{float(summary.get('average_score', 0) or 0):.2f}",
+                "unit": "점 /100",
+            },
+            {
+                "key": "overall_accuracy",
+                "label": "전체 정답률",
+                "value": f"{float(summary.get('overall_accuracy', 0) or 0):.2f}",
+                "unit": "%",
+            },
+            {
+                "key": "average_correct_count",
+                "label": "평균 정답 수",
+                "value": f"{float(summary.get('average_correct_count', 0) or 0):.2f}",
+                "unit": "개",
+            },
+        ]
+
+    def _build_dashboard_chart_payload(
+        self,
+        question_accuracy: list[dict[str, Any]],
+        category_accuracy: list[dict[str, Any]],
+        subcategory_accuracy: list[dict[str, Any]],
+        difficulty_accuracy: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return {
+            "question_values": [
+                float(row.get("accuracy", 0) or 0)
+                for row in question_accuracy
+            ],
+            "category_values": [
+                float(row.get("accuracy", 0) or 0)
+                for row in category_accuracy
+            ],
+            "category_labels": [
+                str(row.get("category", ""))
+                for row in category_accuracy
+            ],
+            "subcategory_values": [
+                (
+                    str(row.get("sub_category", "")),
+                    float(row.get("accuracy", 0) or 0),
+                )
+                for row in sorted(
+                    subcategory_accuracy,
+                    key=lambda item: (-float(item.get("accuracy", 0) or 0), str(item.get("sub_category", ""))),
+                )[:5]
+            ],
+            "difficulty_values": [
+                float(row.get("accuracy", 0) or 0)
+                for row in difficulty_accuracy
+            ],
+            "difficulty_labels": [
+                str(row.get("difficulty", ""))
+                for row in difficulty_accuracy
+            ],
+            "donut_colors": ["#3d8be8", "#43bd6e", "#f59a23", "#8c63d9", "#18b6bd"],
+        }
+
     def _normalize_difficulty_label(self, value: Any) -> str:
         normalized = str(value or "").strip().lower()
         if normalized in {"easy", "low", "1", "하", "쉬움"}:
@@ -346,6 +426,34 @@ class AnalysisService:
         if denominator <= 0:
             return 0.0
         return round((numerator / denominator) * 100, 2)
+
+    def _resolve_exam_id(self, exam_id: Any) -> int | None:
+        try:
+            return int(exam_id)
+        except (TypeError, ValueError):
+            pass
+
+        target_name = str(exam_id or "").strip()
+        if not target_name:
+            return None
+
+        try:
+            for exam in self.exam_repository.read_all():
+                if str(getattr(exam, "exam_name", "")).strip() == target_name:
+                    return int(exam.exam_id)
+        except Exception:
+            return None
+        return None
+
+    def _normalize_exam_date(self, value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+
+        import re
+
+        match = re.search(r"\d{4}-\d{2}-\d{2}", text)
+        return match.group(0) if match else text
 
     def _build_analysis(
         self,
@@ -556,6 +664,13 @@ class AnalysisService:
         exam_date: Any = None,
         exam: Any = None,
     ) -> dict[str, Any]:
+        summary = {
+            "student_count": 0,
+            "total_questions": int(getattr(exam, "total_questions", 0) or 0),
+            "average_score": 0.0,
+            "overall_accuracy": 0.0,
+            "average_correct_count": 0.0,
+        }
         return {
             "success": False,
             "message": message,
@@ -566,18 +681,14 @@ class AnalysisService:
                 "class_name": class_id or getattr(exam, "target_class", ""),
                 "exam_date": exam_date or getattr(exam, "exam_date", ""),
             },
-            "summary": {
-                "student_count": 0,
-                "total_questions": int(getattr(exam, "total_questions", 0) or 0),
-                "average_score": 0.0,
-                "overall_accuracy": 0.0,
-                "average_correct_count": 0.0,
-            },
+            "summary": summary,
             "question_accuracy": [],
             "category_accuracy": [],
             "subcategory_accuracy_top5": [],
             "difficulty_accuracy": [],
             "student_results": [],
+            "metrics": self._build_dashboard_metrics(summary),
+            "charts": self._build_dashboard_chart_payload([], [], [], []),
         }
 
     def _empty_analysis(self) -> dict[str, Any]:
