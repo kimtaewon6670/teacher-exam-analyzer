@@ -21,13 +21,6 @@ class AnalysisController:
         if hasattr(self.view, "reset_button"):
             self.view.reset_button.clicked.connect(self.on_reset_clicked)
 
-        if hasattr(self.view, "exam_combo"):
-            self.view.exam_combo.currentIndexChanged.connect(lambda *_: self.on_search_clicked())
-        if hasattr(self.view, "class_combo"):
-            self.view.class_combo.currentIndexChanged.connect(lambda *_: self.on_search_clicked())
-        if hasattr(self.view, "basis_combo"):
-            self.view.basis_combo.currentIndexChanged.connect(lambda *_: self.on_search_clicked())
-
     def _load_initial_data(self) -> None:
         data = self.analysis_service.get_initial_view_data()
         if hasattr(self.view, "set_exam_options"):

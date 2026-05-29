@@ -97,26 +97,7 @@ class ResultController:
         self._show_message(message, is_valid)
 
     def on_save_clicked(self) -> None:
-        if self._csv_rows:
-            result = self.result_service.save_csv_answers(
-                self._get_selected_exam_id(),
-                self._get_selected_class_id(),
-                self._csv_rows,
-            )
-            if result.get("success"):
-                self._load_csv_answers_into_drafts()
-                self.load_answers_for_selected_student()
-            self._show_message(self._format_validation_message(result), bool(result.get("success")))
-            return
-
-        result = self.result_service.save_student_answers(
-            self._get_selected_exam_id(),
-            self._get_selected_student_id(),
-            self._get_manual_answers(),
-        )
-        if result.get("success"):
-            self._answer_drafts[self._make_answer_key()] = self._get_manual_answers()
-        self._show_message(result["message"], bool(result.get("success")))
+        self.on_grade_clicked()
 
     def on_manual_answers_changed(self) -> None:
         answers = self._get_manual_answers()
@@ -166,7 +147,7 @@ class ResultController:
             grading_result = self.build_grading_result_view_data()
             if grading_result.get("success"):
                 self._set_grading_result_data(grading_result)
-            self._show_message("梨꾩젏?섏뿀?듬땲??", True)
+            self._show_message("채점되었습니다.", True)
             return
 
         self._show_message(result["message"], False)
