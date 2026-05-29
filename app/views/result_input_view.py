@@ -193,9 +193,22 @@ class ResultInputView(QWidget):
         return dict(self._manual_answers)
 
     def set_manual_answers(self, answers: dict[int, str]) -> None:
+        for question_number in self._manual_answers:
+            self._manual_answers[question_number] = ""
+
         for question_number, answer in answers.items():
             if question_number in self._manual_answers:
                 self._manual_answers[question_number] = str(answer).strip()
+
+        if self.answer_input_window is not None:
+            self.answer_input_window.set_answers(self.get_manual_answers())
+
+    def clear_manual_answers(self) -> None:
+        for question_number in self._manual_answers:
+            self._manual_answers[question_number] = ""
+
+        if self.answer_input_window is not None:
+            self.answer_input_window.set_answers(self.get_manual_answers())
 
     def set_csv_file_name(self, file_name: str) -> None:
         self.csv_file_name_label.setText(file_name or "선택된 CSV 파일이 없습니다.")
