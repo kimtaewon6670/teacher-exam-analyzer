@@ -413,8 +413,17 @@ class ResultInputService:
 
     def parse_csv_file(self, file_path: str) -> list[dict[str, str]]:
         path = Path(file_path)
-        with path.open("r", encoding="utf-8-sig", newline="") as csv_file:
-            return [dict(row) for row in csv.DictReader(csv_file)]
+        last_error: Exception | None = None
+        for encoding in ("utf-8-sig", "cp949", "euc-kr"):
+            try:
+                with path.open("r", encoding=encoding, newline="") as csv_file:
+                    return [self._normalize_csv_row(dict(row)) for row in csv.DictReader(csv_file)]
+            except UnicodeDecodeError as exc:
+                last_error = exc
+
+        if last_error is not None:
+            raise last_error
+        return []
 
     @staticmethod
     def calculate_score(correct_count: int, total_questions: int) -> float:
@@ -566,6 +575,26 @@ class ResultInputService:
             except (TypeError, ValueError):
                 continue
             normalized[key] = str(answer or "").strip()
+        return normalized
+
+    def _normalize_csv_row(self, row: dict[str, str]) -> dict[str, str]:
+        normalized = {}
+        for key, value in row.items():
+            clean_key = str(key or "").strip()
+            clean_value = str(value or "").strip()
+            lower_key = clean_key.lower().replace(" ", "")
+            if lower_key in {"학번", "studentnumber", "student_no", "studentno"}:
+                normalized["student_id"] = clean_value
+                continue
+            if lower_key.startswith("문항") and lower_key.endswith("번"):
+                number = lower_key.removeprefix("문항").removesuffix("번")
+                if number.isdigit():
+                    normalized[f"q{number}"] = clean_value
+                    continue
+            if lower_key.endswith("번") and lower_key[:-1].isdigit():
+                normalized[f"q{lower_key[:-1]}"] = clean_value
+                continue
+            normalized[clean_key] = clean_value
         return normalized
 
     def _to_int(self, value: Any, default: int = 0) -> int:

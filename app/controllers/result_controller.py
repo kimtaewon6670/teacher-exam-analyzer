@@ -14,6 +14,8 @@ class ResultController:
         self.result_service = result_service or ResultInputService()
         self._students_by_id: dict[Any, dict[str, Any]] = {}
         self._csv_rows: list[dict[str, str]] = []
+        self._answer_drafts: dict[tuple[Any, Any], dict[Any, Any]] = {}
+        self._current_answer_key: tuple[Any, Any] | None = None
 
         self._connect_view_events()
         self._load_initial_data()
@@ -29,6 +31,8 @@ class ResultController:
             self.view.reset_button.clicked.connect(self.on_reset_clicked)
         if hasattr(self.view, "load_csv_button"):
             self.view.load_csv_button.clicked.connect(self.on_load_csv_clicked)
+        if hasattr(self.view, "manual_answers_changed"):
+            self.view.manual_answers_changed.connect(self.on_manual_answers_changed)
 
         if hasattr(self.view, "exam_combo"):
             self.view.exam_combo.currentIndexChanged.connect(self.on_exam_changed)
@@ -58,14 +62,17 @@ class ResultController:
         self._load_initial_data()
 
     def on_exam_changed(self) -> None:
+        self._remember_current_answers()
         self._refresh_exam_context()
 
     def on_class_changed(self) -> None:
+        self._remember_current_answers()
         class_id = self._get_selected_class_id()
         self._set_student_options(self.result_service.get_students_by_class(class_id))
         self.load_answers_for_selected_student()
 
     def on_student_changed(self) -> None:
+        self._remember_current_answers()
         self.load_answers_for_selected_student()
 
     def on_validate_clicked(self) -> None:
@@ -82,11 +89,29 @@ class ResultController:
             self._get_selected_student_id(),
             self._get_manual_answers(),
         )
+        if result.get("success"):
+            self._answer_drafts[self._make_answer_key()] = self._get_manual_answers()
         self._show_message(result["message"], bool(result.get("success")))
+
+    def on_manual_answers_changed(self) -> None:
+        answers = self._get_manual_answers()
+        self._answer_drafts[self._make_answer_key()] = answers
+        if not any(str(answer or "").strip() for answer in answers.values()):
+            return
+
+        result = self.result_service.save_student_answers(
+            self._get_selected_exam_id(),
+            self._get_selected_student_id(),
+            answers,
+        )
+        if result.get("success"):
+            self._show_message("답안이 자동 저장되었습니다.", True)
+        else:
+            self._show_message(result.get("message", "답안을 저장할 수 없습니다."), False)
 
     def on_grade_clicked(self) -> None:
         manual_answers = self._get_manual_answers()
-        if manual_answers:
+        if any(str(answer or "").strip() for answer in manual_answers.values()):
             save_result = self.result_service.save_student_answers(
                 self._get_selected_exam_id(),
                 self._get_selected_student_id(),
@@ -95,23 +120,35 @@ class ResultController:
             if not save_result.get("success"):
                 self._show_message(save_result["message"], False)
                 return
+            self._answer_drafts[self._make_answer_key()] = manual_answers
 
         result = self.result_service.run_auto_grading(
             self._get_selected_exam_id(),
             self._get_selected_class_id(),
         )
-        self._show_message(result["message"], bool(result.get("success")))
+        if result.get("success"):
+            grading_result = self.build_grading_result_view_data()
+            if grading_result.get("success"):
+                self._set_grading_result_data(grading_result)
+            self._show_message("채점되었습니다.", True)
+            return
+
+        self._show_message(result["message"], False)
 
     def on_result_view_clicked(self) -> None:
         result = self.build_grading_result_view_data()
         if result.get("success"):
             self._set_grading_result_data(result)
+            if hasattr(self.view, "show_grading_result_window"):
+                self.view.show_grading_result_window()
         self._show_message(result.get("message", ""), bool(result.get("success")))
 
     def on_reset_clicked(self) -> None:
         if hasattr(self.view, "clear_form"):
             self.view.clear_form()
         self._csv_rows = []
+        self._answer_drafts = {}
+        self._current_answer_key = None
         self._refresh_exam_context()
 
     def on_load_csv_clicked(self) -> None:
@@ -146,11 +183,14 @@ class ResultController:
         self.load_answers_for_selected_student()
 
     def load_answers_for_selected_student(self) -> dict[int, str]:
-        answers = self.result_service.load_answers_for_student(
+        key = self._make_answer_key()
+        saved_answers = self.result_service.load_answers_for_student(
             self._get_selected_exam_id(),
             self._get_selected_student_id(),
         )
+        answers = saved_answers or self._answer_drafts.get(key, {})
         self._set_manual_answers(answers)
+        self._current_answer_key = key
         return answers
 
     def get_grading_result(self) -> dict[str, Any]:
@@ -200,6 +240,19 @@ class ResultController:
         if hasattr(self.view, "get_manual_answers"):
             return self.view.get_manual_answers()
         return {}
+
+    def _make_answer_key(self) -> tuple[Any, Any]:
+        return (self._get_selected_exam_id(), self._get_selected_student_id())
+
+    def _remember_current_answers(self) -> None:
+        if self._current_answer_key is None:
+            return
+
+        answers = self._get_manual_answers()
+        if any(str(answer or "").strip() for answer in answers.values()):
+            self._answer_drafts[self._current_answer_key] = answers
+        else:
+            self._answer_drafts.pop(self._current_answer_key, None)
 
     def _set_manual_answers(self, answers: dict[int, str]) -> None:
         if answers and hasattr(self.view, "set_manual_answers"):

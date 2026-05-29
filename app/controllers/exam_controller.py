@@ -48,6 +48,8 @@ class ExamController:
             self.view.save_exam_requested.connect(self.save_exam)
         if hasattr(self.view, "pdf_export_requested"):
             self.view.pdf_export_requested.connect(self.export_pdf)
+        if hasattr(self.view, "exam_pdf_export_requested"):
+            self.view.exam_pdf_export_requested.connect(self.export_saved_exam_pdf)
         if hasattr(self.view, "preview_requested"):
             self.view.preview_requested.connect(self.preview_exam)
         if hasattr(self.view, "exam_delete_requested"):
@@ -296,6 +298,54 @@ class ExamController:
             save_path = f"{save_path}.pdf"
 
         success, message = self.pdf_service.export_exam_pdf(save_path, self.view.get_exam_form_data(), questions)
+        self._show_export_result(success, message)
+
+    def export_saved_exam_pdf(self, exam_id: object) -> None:
+        target_exam_id = self._resolve_exam_id(exam_id)
+        if target_exam_id is None:
+            self._show_error("PDF로 출력할 시험지 정보를 찾을 수 없습니다.")
+            return
+
+        try:
+            exam = ExamRepository.read(target_exam_id)
+            exam_questions = ExamQuestionRepository.read_by_exam(target_exam_id)
+        except Exception as exc:
+            self._show_error(f"시험지 조회 중 오류가 발생했습니다: {exc}")
+            return
+
+        if not exam:
+            self._show_error("PDF로 출력할 시험지를 찾을 수 없습니다.")
+            return
+
+        questions = []
+        for exam_question in exam_questions:
+            try:
+                question = QuestionRepository.read(exam_question.question_id)
+            except Exception:
+                question = None
+            if question:
+                questions.append(self._to_view_question(question))
+
+        if not questions:
+            self._show_error("PDF로 출력할 문제가 없습니다.")
+            return
+
+        save_path = self.view.get_pdf_save_path()
+        if not save_path:
+            return
+        if not save_path.lower().endswith(".pdf"):
+            save_path = f"{save_path}.pdf"
+
+        exam_info = {
+            "exam_name": exam.exam_name,
+            "class_name": exam.target_class,
+            "exam_date": exam.exam_date or "",
+        }
+        success, message = self.pdf_service.export_exam_pdf(
+            save_path,
+            exam_info,
+            self._get_exam_paper_questions(questions),
+        )
         self._show_export_result(success, message)
 
     def on_manual_select_clicked(self) -> None:

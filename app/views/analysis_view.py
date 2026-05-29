@@ -190,16 +190,18 @@ class AnalysisView(QWidget):
     def set_type_analysis_data(self, rows: list[dict[str, object]]) -> None:
         self._fill_table(self.type_table, rows, ["type", "correct_rate", "wrong_rate"])
         weakest = min(rows, key=lambda row: float(row.get("correct_rate", 100)), default={})
-        self.type_graph_label.setText(f"그래프 placeholder\n가장 낮은 유형: {weakest.get('type', '-')}")
+        self.type_graph_label.setText(self._build_rate_graph(rows, "type", f"가장 낮은 유형: {weakest.get('type', '-')}"))
 
     def set_sub_category_analysis_data(self, rows: list[dict[str, object]]) -> None:
         self._fill_table(self.sub_category_table, rows, ["sub_category", "correct_rate", "wrong_rate"])
         weakest = min(rows, key=lambda row: float(row.get("correct_rate", 100)), default={})
-        self.sub_category_graph_label.setText(f"그래프 placeholder\n취약 세부 분류: {weakest.get('sub_category', '-')}")
+        self.sub_category_graph_label.setText(
+            self._build_rate_graph(rows, "sub_category", f"취약 세부 분류: {weakest.get('sub_category', '-')}")
+        )
 
     def set_difficulty_analysis_data(self, rows: list[dict[str, object]]) -> None:
         self._fill_table(self.difficulty_table, rows, ["difficulty", "correct_rate", "wrong_rate"])
-        self.difficulty_graph_label.setText("그래프 placeholder\n난이도별 정답률을 표시합니다.")
+        self.difficulty_graph_label.setText(self._build_rate_graph(rows, "difficulty", "난이도별 정답률"))
 
     def set_weakness_summary(self, data: dict[str, object]) -> None:
         self.feedback_label.setText(str(data.get("feedback", "-")))
@@ -363,6 +365,21 @@ class AnalysisView(QWidget):
                 item.setTextAlignment(alignment)
                 table.setItem(row_index, column_index, item)
             table.setRowHeight(row_index, 36)
+
+    def _build_rate_graph(self, rows: list[dict[str, object]], label_key: str, title: str) -> str:
+        if not rows:
+            return f"{title}\n분석할 데이터가 없습니다."
+
+        lines = [title]
+        for row in rows:
+            label = str(row.get(label_key, "-"))
+            try:
+                rate = float(row.get("correct_rate", 0))
+            except (TypeError, ValueError):
+                rate = 0
+            bar = "█" * max(1, int(rate // 10)) if rate > 0 else "-"
+            lines.append(f"{label:<8} {bar} {rate:.1f}%")
+        return "\n".join(lines)
 
     def _get_selected_id(self, ids: list[object], index: int) -> object | None:
         if 0 <= index < len(ids):

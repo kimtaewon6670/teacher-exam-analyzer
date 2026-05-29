@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -23,6 +23,8 @@ from PySide6.QtWidgets import (
 
 
 class ResultInputView(QWidget):
+    manual_answers_changed = Signal()
+
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("resultInputView")
@@ -241,11 +243,14 @@ class ResultInputView(QWidget):
 
     def set_grading_result_data(
         self,
-        student_rows: list[dict[str, object]],
-        question_rows: list[dict[str, object]],
+        student_rows: list[dict[str, object]] | dict[str, object],
+        question_rows: list[dict[str, object]] | None = None,
     ) -> None:
+        if isinstance(student_rows, dict):
+            student_rows, question_rows = self._convert_grading_result_data(student_rows)
+
         self._grading_student_rows = student_rows
-        self._grading_question_rows = question_rows
+        self._grading_question_rows = question_rows or []
         self.result_view_button.setEnabled(bool(student_rows or question_rows))
 
     def show_validation_message(self, message: str, is_success: bool = False) -> None:
@@ -350,8 +355,6 @@ class ResultInputView(QWidget):
         self.reset_button = QPushButton("초기화")
         self.grade_button.setObjectName("primaryButton")
         self.result_view_button.setEnabled(False)
-        self.grade_button.clicked.connect(self._show_sample_grading_results)
-        self.result_view_button.clicked.connect(self.show_grading_result_window)
 
         layout.addStretch()
         layout.addWidget(self.validate_button)
@@ -387,6 +390,7 @@ class ResultInputView(QWidget):
         self.answer_input_window = AnswerInputDialog(self.get_manual_answers(), self)
         if self.answer_input_window.exec() == QDialog.Accepted:
             self.set_manual_answers(self.answer_input_window.get_answers())
+            self.manual_answers_changed.emit()
 
     def _show_sample_grading_results(self) -> None:
         self.set_grading_result_data(
@@ -409,6 +413,41 @@ class ResultInputView(QWidget):
         dialog = GradingResultDialog(self._grading_student_rows, self._grading_question_rows, self)
         dialog.showMaximized()
         dialog.exec()
+
+    def _convert_grading_result_data(
+        self,
+        result: dict[str, object],
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        student_rows = []
+        question_rows = []
+        for student in result.get("students", []) or []:
+            details = student.get("details", []) or []
+            student_rows.append(
+                {
+                    "student_name": student.get("student_name", ""),
+                    "student_id": student.get("student_number", ""),
+                    "score": student.get("score", ""),
+                    "correct_count": student.get("correct_count", ""),
+                    "wrong_count": student.get("wrong_count", ""),
+                    "question_results": " / ".join(
+                        f"{detail.get('question_number', detail.get('question_no', ''))} "
+                        f"{'맞음' if detail.get('is_correct') else '틀림'}"
+                        for detail in details
+                    ),
+                }
+            )
+            for detail in details:
+                question_rows.append(
+                    {
+                        "question_number": detail.get("question_number", detail.get("question_no", "")),
+                        "student_name": student.get("student_name", ""),
+                        "correct_answer": detail.get("correct_answer", ""),
+                        "student_answer": detail.get("student_answer", ""),
+                        "result": "맞음" if detail.get("is_correct") else "틀림",
+                    }
+                )
+
+        return student_rows, question_rows
 
     def _get_selected_id(self, ids: list[object], index: int) -> object | None:
         if 0 <= index < len(ids):
