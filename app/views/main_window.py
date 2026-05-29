@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from app.controllers.exam_controller import ExamController
 from app.controllers.analysis_controller import AnalysisController
+from app.controllers.dashboard_controller import DashboardController
 from app.controllers.question_controller import QuestionController
 from app.controllers.result_controller import ResultController
 from app.controllers.student_controller import StudentController
@@ -48,11 +49,14 @@ class MainWindow(QMainWindow):
 
         self.student_controller = StudentController()
         self.question_controller = None
+        self.dashboard_controller = None
         self.exam_controller = None
         self.result_controller = None
         self.analysis_controller = None
 
-        self.pages.addWidget(DashboardView())
+        dashboard_view = DashboardView()
+        self.dashboard_controller = DashboardController(dashboard_view)
+        self.pages.addWidget(dashboard_view)
 
         for name in [
             "학생 관리",
@@ -137,6 +141,8 @@ class MainWindow(QMainWindow):
         )
 
     def _on_page_changed(self, index: int) -> None:
+        if index == 0 and self.dashboard_controller is not None:
+            self.dashboard_controller.refresh_options()
         if index == 4 and self.result_controller is not None:
             self.result_controller.refresh_options()
         if index == 5 and self.analysis_controller is not None:
